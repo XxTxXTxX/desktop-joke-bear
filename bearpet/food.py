@@ -1,8 +1,3 @@
-"""投喂系统：食物、投喂动画、饱食度面板。
-
-食物是现画的小向量图；投喂流程 = 从窗口上方掉到嘴边 → 咀嚼（碎屑）→ 爱心 →
-饱食度/体重变化。饱食度会影响熊的行为（饿了会抱怨、吃太饱会拒绝）。
-"""
 from __future__ import annotations
 
 import math
@@ -18,9 +13,9 @@ from . import art, sprite, winlayer
 class Food:
     id: str
     name: str
-    satiety: float      # 饱食度 +%
-    weight: float       # 体重 +kg
-    mood: int           # 心情（爱心数量相关）
+    satiety: float
+    weight: float
+    mood: int
     color: tuple[int, int, int]
     line: str
 
@@ -55,7 +50,6 @@ FULL_LINES = [
 
 
 def icon(f: Food, size: int = 34) -> Image.Image:
-    """食物图标。"""
     s = size
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
@@ -80,14 +74,13 @@ def icon(f: Food, size: int = 34) -> Image.Image:
                             fill=f.color + (255,), outline=ink, width=2)
         d.arc([s * 0.66, s * 0.42, s * 0.92, s * 0.70], 270, 90, fill=ink, width=3)
         d.line([s * 0.34, s * 0.16, s * 0.42, s * 0.28], fill=(200, 200, 210, 255), width=2)
-    else:  # spicy
+    else:
         d.polygon([(s * 0.14, s * 0.62), (s * 0.5, s * 0.24), (s * 0.86, s * 0.62),
                    (s * 0.5, s * 0.84)], fill=f.color + (255,), outline=ink, width=2)
         d.line([s * 0.34, s * 0.58, s * 0.66, s * 0.58], fill=(255, 214, 214, 255), width=2)
     return img
 
 
-# ---------------------------------------------------------------- 投喂动画
 def _heart(d, x, y, r, color, alpha):
     d.polygon([(x, y + r),
                (x - r * 0.98, y - r * 0.18),
@@ -101,7 +94,6 @@ def _heart(d, x, y, r, color, alpha):
 
 
 def render_overlay(canvas: Image.Image, feed: dict, anchors, cell_origin=(0, 0)) -> Image.Image:
-    """把正在进行的投喂画在熊上层。feed 是 app 维护的状态字典。"""
     out = canvas
     phase = feed["phase"]
     t = feed["t"]
@@ -117,7 +109,6 @@ def render_overlay(canvas: Image.Image, feed: dict, anchors, cell_origin=(0, 0))
         return out
 
     if phase == "eat":
-        # 碎屑 + 腮帮鼓起：食物缩小并被咬掉
         frag = Image.new("RGBA", out.size, (0, 0, 0, 0))
         d = ImageDraw.Draw(frag)
         prog = min(1.0, t / 0.85)
@@ -134,7 +125,6 @@ def render_overlay(canvas: Image.Image, feed: dict, anchors, cell_origin=(0, 0))
             d.ellipse([px - r, py - r, px + r, py + r], fill=f.color + (int(220 * (1 - prog)),))
         return Image.alpha_composite(out, frag)
 
-    # phase == "happy"：爱心从脸两侧往上飘
     frag = Image.new("RGBA", out.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(frag)
     rng = random.Random(feed.get("seed", 7) + 1)
@@ -147,9 +137,7 @@ def render_overlay(canvas: Image.Image, feed: dict, anchors, cell_origin=(0, 0))
     return Image.alpha_composite(out, frag)
 
 
-# ---------------------------------------------------------------- 面板
 class FeedPanel:
-    """饱食度条 + 一排食物。"""
     CELL = 56
     PAD = 10
     BAR_H = 26
@@ -176,7 +164,6 @@ class FeedPanel:
         d = ImageDraw.Draw(img)
         d.rounded_rectangle([0, 0, self.W - 1, self.H - 1], radius=13,
                             fill=(253, 251, 246, 243), outline=art.OUTLINE, width=2)
-        # 饱食度条
         sat = max(0.0, min(100.0, self.pet.stats["satiety"]))
         bx0, by0 = self.PAD, self.PAD
         bx1, by1 = self.W - self.PAD, self.PAD + 14
@@ -193,7 +180,6 @@ class FeedPanel:
         txt = f"{wt:.1f} kg"
         d.text((bx1 - self.small.getlength(txt) - 4, by0 - 1), txt, font=self.small,
                fill=(90, 70, 52, 255))
-        # 食物格
         for i, f in enumerate(FOODS):
             x, y = self._cell_box(i)
             if i == self.hover:
@@ -244,8 +230,8 @@ class FeedPanel:
             return
         started = self.pet.feed(FOODS[i])
         if started:
-            return                     # 已经开始掉食物，面板由 feed() 关掉
-        self._render()                 # 被拒绝（吃太饱）：面板留着，刷新一下
+            return
+        self._render()
         self.win.blit(self.image)
 
     def refresh(self):

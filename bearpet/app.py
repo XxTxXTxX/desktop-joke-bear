@@ -1,4 +1,3 @@
-"""主程序：窗口、物理、交互、每帧绘制。"""
 from __future__ import annotations
 
 import math
@@ -8,15 +7,15 @@ import time
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import (art, editor, food, fx, garment, lines, outfit as omod, remind_ui, reminder,
+from . import (art, editor, food, fx, garment, lines, outfit as omod, pixelfig, remind_ui, reminder,
                remote, size as sizemod, sprite, wardrobe, winlayer)
 from .brain import Brain
 
-GRAVITY = 2300.0       # px/s²
-MAX_FALL = 3000.0      # 终端速度
-HARD_LAND = 720.0      # 落地速度超过这个值就摔晕
+GRAVITY = 2300.0
+MAX_FALL = 3000.0
+HARD_LAND = 720.0
 FPS = 45
-BUBBLE_BOTTOM = 116.0  # 气泡尾巴尖的位置（窗口坐标）
+BUBBLE_BOTTOM = 116.0
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(_BASE_DIR, ".bear.json")
 REMINDER_PATH = os.path.join(_BASE_DIR, ".reminders.json")
@@ -39,10 +38,9 @@ def _log(msg: str):
 
 class BearPet:
     def __init__(self, seed: int | None = None):
-        # 主角是 Petdex 图集；图集缺失时回退到 art.py 的程序化造型
         try:
             self.sprites: sprite.SpriteSheet | None = sprite.SpriteSheet()
-        except Exception as exc:      # 文件缺失/尺寸不对
+        except Exception as exc:
             print(f"[bearpet] 图集不可用，回退程序化绘制: {exc}")
             self.sprites = None
 
@@ -50,21 +48,18 @@ class BearPet:
         self.brain = Brain(seed)
         self.running = True
 
-        # 换装
         self.outfit: omod.Outfit = self._load_outfit()
         self.wear: dict = self._load_wear()
         if self.sprites is not None:
             self.sprites.set_outfit(self.outfit)
             self.sprites.wear = dict(self.wear)
-        self.morph = None            # {"from":Outfit, "to":Outfit, "t":float}
-        self.wardrobe = None         # 换装面板
+        self.morph = None
+        self.wardrobe = None
 
-        # 大小（窗口尺寸固定，只缩放画布里的精灵）
-        self.size_scale: float = sizemod.clamp(self._load_config().get("size", 1.0))
+        self.size_scale: float = sizemod.clamp(self._load_config().get("size", 0.5))
         self.size_panel = None
         self.size_is_open = False
 
-        # 提醒 / 远端
         cfg = self._load_config()
         q = cfg.get("quiet") or ["23:30", "08:00"]
         self.quiet = reminder.tidy_quiet(q[:2] if len(q) >= 2 else ["23:30", "08:00"])
@@ -84,12 +79,16 @@ class BearPet:
         self.reminders_open = False
         self.editor = None
         self.editor_open = False
+        self.riding = False
+        self.climb = None
+        self._cursor_last = None
+        self._cursor_idle = 0.0
+        self._cursor_speed = 0.0
 
-        # 投喂
         self.stats: dict = self._load_stats()
         self.feed_panel = None
         self.feed_is_open = False
-        self.feeding = None          # 进行中的投喂
+        self.feeding = None
         self._hungry_next = 40.0
 
         left, top, right, bottom = self.win.work_area()
@@ -100,12 +99,10 @@ class BearPet:
         self.vy = 0.0
         self.on_ground = True
 
-        # 帧动画计时
         self.spr_state = "idle"
         self.spr_ms = 0.0
         self.wave_t = 0.0
 
-        # 拖动状态
         self.dragging = False
         self.pressed = False
         self.press_at = 0.0
@@ -113,7 +110,6 @@ class BearPet:
         self.grab = (0.0, 0.0)
         self.samples: list[tuple[float, float, float]] = []
 
-        # 右键菜单
         self.menu: Menu | None = None
         self.menu_open = False
         self.wardrobe: "Wardrobe | None" = None
@@ -132,11 +128,13 @@ class BearPet:
 
         self.brain.say("又见到你了，我没什么变化", 3.2)
 
-    # ------------------------------------------------------------ 输入
     def _on_down(self, sx, sy):
         if (self.menu_open or self.wardrobe_is_open or self.feed_is_open
-                or self.size_is_open or self.reminders_open):
-            return                      # 菜单自己处理
+                or self.size_is_open or self.reminders_open or self.editor_open):
+            return
+        if self.riding:
+            self.stop_riding(thrown=False)
+            return
         self.pressed = True
         self.dragging = False
         self.press_at = time.perf_counter()
@@ -203,7 +201,6 @@ class BearPet:
         dt = max(1e-3, t1 - t0)
         vx = (x1 - x0) / dt
         vy = (y1 - y0) / dt
-        # 限幅，别让熊飞出宇宙
         return max(-2600.0, min(2600.0, vx)), max(-2600.0, min(2600.0, vy))
 
     def _clamp_drag(self):
@@ -213,7 +210,6 @@ class BearPet:
         self.x = max(bear_l, min(bear_r, self.x))
         self.y = max(top - 40.0, min(bottom - sprite.GROUND - 10.0, self.y))
 
-    # ------------------------------------------------------------ 菜单
     def _open_menu(self):
         self.close_reminders()
         self.close_size()
@@ -222,7 +218,7 @@ class BearPet:
         if self.menu is None:
             self.menu = Menu(self)
         self.menu_open = True
-        self.brain.speech = None          # 菜单和气泡别叠在一起
+        self.brain.speech = None
         self.menu.open_at(self.x, self.y)
 
     def close_menu(self):
@@ -230,7 +226,6 @@ class BearPet:
         if self.menu:
             self.menu.hide()
 
-    # ------------------------------------------------------------ 换装
     def open_wardrobe(self):
         self.close_menu()
         self.close_size()
@@ -246,7 +241,6 @@ class BearPet:
         if self.wardrobe:
             self.wardrobe.hide()
 
-    # ------------------------------------------------------------ 投喂
     def open_feed(self):
         self.close_menu()
         self.close_wardrobe()
@@ -264,7 +258,6 @@ class BearPet:
             self.feed_panel.hide()
 
     def _mouth_point(self) -> tuple[float, float]:
-        """嘴巴位置（窗口坐标），食物要落到这里；随缩放一起换算。"""
         s = self._draw_scale()
         dx = sprite.CELL_X + (sprite.CELL_W - sprite.CELL_W * s) // 2
         dy = sprite.CELL_Y + (sprite.CELL_H - sprite.CELL_H * s)
@@ -276,7 +269,6 @@ class BearPet:
             return sprite.W / 2.0, dy + 150.0 * s
 
     def feed(self, f: "food.Food") -> bool:
-        """开始投喂；返回 True 表示已经掉下去了（面板会被关掉）。"""
         if self.feeding is not None:
             return False
         if self.stats["satiety"] >= 92.0:
@@ -351,8 +343,6 @@ class BearPet:
     def _load_config(self) -> dict:
         try:
             import json
-            # utf-8-sig：PowerShell 的 Set-Content -Encoding UTF8 会带 BOM，
-            # 用纯 utf-8 会解析失败并把整份配置当成空
             with open(CONFIG_PATH, "r", encoding="utf-8-sig") as f:
                 data = json.load(f)
             return data if isinstance(data, dict) else {}
@@ -386,7 +376,6 @@ class BearPet:
         self._save_config()
 
     def reload_remote(self):
-        """外部改了 .bear.json 的 remote 之后重新连（面板里也会用到）。"""
         cfg = self._load_config().get("remote") or {}
         url = str(cfg.get("url", "") or "").strip()
         tok = str(cfg.get("token", "") or "").strip()
@@ -402,10 +391,8 @@ class BearPet:
         self._save_config()
 
     def _tick_feed(self, dt: float):
-        # 饱食度随时间下降（约 18 分钟从满到空）
         self.stats["satiety"] = max(0.0, self.stats["satiety"] - 0.09 * dt)
 
-        # 饿了就抱怨
         self._hungry_next -= dt
         if self._hungry_next <= 0.0:
             self._hungry_next = 55.0
@@ -431,7 +418,73 @@ class BearPet:
         elif fd["t"] >= 0.8:
             self.feeding = None
 
-    # ------------------------------------------------------------ 提醒
+    def _ride_scale(self) -> float:
+        return max(0.6, self.size_scale)
+
+    def _ride_offset(self):
+        fig = pixelfig.render(self._ride_scale())
+        dx = (sprite.W - fig.width) // 2
+        dy = 112
+        return fig, dx + int(fig.width * 0.60), dy + int(fig.height * 0.86)
+
+    def _start_climb(self):
+        self.climb = {"t": 0.0, "x": self.x, "y": self.y}
+        self.brain.say_rand(lines.CLIMB_LINES, 2.2)
+
+    def start_riding(self):
+        self.riding = True
+        self.climb = None
+        self.pressed = False
+        self.dragging = False
+        self.brain.say_rand(lines.RIDE_LINES, 2.4)
+
+    def stop_riding(self, thrown: bool):
+        if not self.riding:
+            return
+        self.riding = False
+        self.on_ground = False
+        self.vy = -240.0 if thrown else -120.0
+        self.vx = max(-900.0, min(900.0, self._cursor_speed * 0.25))
+        self.brain.say_rand(lines.THROWN_LINES, 2.0)
+
+    def _tick_cursor(self, dt: float):
+        cx, cy = winlayer.cursor_pos()
+        if self._cursor_last is None:
+            self._cursor_last = (cx, cy)
+            return
+        dx, dy = cx - self._cursor_last[0], cy - self._cursor_last[1]
+        self._cursor_last = (cx, cy)
+        moved = (dx * dx + dy * dy) ** 0.5
+        self._cursor_speed = moved / max(dt, 1e-3)
+        self._cursor_idle = self._cursor_idle + dt if moved < 0.6 else 0.0
+
+        if self.riding:
+            fig, ox, oy = self._ride_offset()
+            self.x = cx - ox
+            self.y = cy - oy
+            self._clamp_drag()
+            if self._cursor_speed > 1500.0 or moved > 45.0:
+                self.stop_riding(thrown=True)
+            return
+
+        if self.climb is not None:
+            c = self.climb
+            c["t"] += dt / 0.9
+            k = min(1.0, c["t"])
+            ease = k * k * (3 - 2 * k)
+            fig, ox, oy = self._ride_offset()
+            self.x = c["x"] + (cx - ox - c["x"]) * ease
+            self.y = c["y"] + (cy - oy - c["y"]) * ease
+            if k >= 1.0:
+                self.start_riding()
+            return
+
+        busy = (self.dragging or self.morph is not None or self.menu_open
+                or self.wardrobe_is_open or self.feed_is_open or self.size_is_open
+                or self.reminders_open or self.editor_open)
+        if self._cursor_idle >= 10.0 and self.on_ground and not busy:
+            self._start_climb()
+
     def open_reminders(self):
         self.close_menu()
         self.close_wardrobe()
@@ -452,7 +505,6 @@ class BearPet:
         if self.editor is None:
             self.editor = editor.ReminderEditor(self)
         self.editor_open = True
-        # 开在熊上方，避免被桌宠自己的置顶盖住
         self.editor.open(self.x + sprite.W / 2 - 196, self.y - 262)
         self.close_reminders()
 
@@ -505,7 +557,6 @@ class BearPet:
         for r in self.store.pop_due(now):
             self.deliver_reminder(r)
 
-    # ------------------------------------------------------------ 更新
     def update(self, dt: float):
         self.brain.tick(dt)
         self.advance_animation(dt)
@@ -517,8 +568,8 @@ class BearPet:
 
         self._tick_feed(dt)
         self._tick_reminders(dt)
+        self._tick_cursor(dt)
 
-        # 弹层外点击 → 关闭
         lbtn = winlayer.left_button_down()
         if lbtn and not self._prev_lbtn:
             cx, cy = winlayer.cursor_pos()
@@ -539,7 +590,6 @@ class BearPet:
                     self.close_menu()
         self._prev_lbtn = lbtn
 
-        # 变身动画推进
         if self.morph is not None:
             self.morph["t"] += dt / fx.DURATION
             if self.morph["t"] >= 1.0:
@@ -559,7 +609,6 @@ class BearPet:
                 self.vy = -560.0
                 self.on_ground = False
 
-        # 每 4 秒把熊重新顶到最上层（有些全屏程序会踩过去）
         if now - self._last_raise > 4.0 and not self.editor_open:
             self.win.raise_topmost()
             self._last_raise = now
@@ -597,9 +646,7 @@ class BearPet:
             if self.brain.state == "walk" and self.brain.dir > 0:
                 self.brain.notify_wall()
 
-    # ------------------------------------------------------------ 图集状态
     def sprite_state(self) -> str:
-        """把行为状态机映射到图集的 9 个状态行。"""
         b = self.brain
         if self.dragging:
             return "jumping"
@@ -611,11 +658,11 @@ class BearPet:
         if st == "walk":
             return "running-right" if b.dir > 0 else "running-left"
         if st == "sit":
-            return "running"          # 第 7 行：抱着笔记本敲键盘
+            return "running"
         if st == "sleep":
-            return "sleep"            # failed 末两帧躺平慢放
+            return "sleep"
         if st in ("sigh", "dizzy"):
-            return "failed"           # 第 5 行：哭/摔倒
+            return "failed"
         if st == "hop":
             return "jumping"
         if st == "wave":
@@ -634,7 +681,6 @@ class BearPet:
         if self.wave_t > 0.0:
             self.wave_t = max(0.0, self.wave_t - dt)
 
-    # ------------------------------------------------------------ 姿态（回退用）
     def pose(self) -> art.Pose:
         b = self.brain
         st = b.state
@@ -714,7 +760,7 @@ class BearPet:
             p.mouth = "open"
             p.mouth_open = 0.6
             p.leg_phase = t * 6.0
-        else:  # idle
+        else:
             p.bob = math.sin(t * 2.1) * 1.1
             p.squash = 1.0 + 0.014 * math.sin(t * 2.1 - 0.5)
             p.head_tilt = -1.5 + math.sin(t * 0.8) * 1.5
@@ -734,8 +780,16 @@ class BearPet:
             p.eye_dx = max(-1.0, min(1.0, dx))
             p.eye_dy = max(-1.0, min(1.0, dy)) * 0.7
 
-    # ------------------------------------------------------------ 绘制
     def draw(self):
+        if self.riding or self.climb is not None:
+            img = Image.new("RGBA", (sprite.W, sprite.H), (0, 0, 0, 0))
+            fig, ox, oy = self._ride_offset()
+            img.alpha_composite(fig, (ox - int(fig.width * 0.60), oy - int(fig.height * 0.86)))
+            if self.brain.speech:
+                img = art.draw_bubble(img, self.brain.speech, self.brain.speech_alpha(),
+                                      bottom=58)
+            self.win.blit(img, int(round(self.x)), int(round(self.y)))
+            return
         shadow = self._shadow_factor()
         scale = self._draw_scale()
         if self.sprites is not None:
@@ -758,19 +812,15 @@ class BearPet:
         self.win.blit(img, int(round(self.x)), int(round(self.y)))
 
     def _body_scale(self) -> float:
-        """体重影响体型：喂多了会圆一点。"""
         return max(0.94, min(1.10, 1.0 + (self.stats.get("weight", 50.0) - 50.0) * 0.0012))
 
     def _draw_scale(self) -> float:
-        """最终缩放 = 体重体型 × 右键菜单里选的档位。"""
         return self._body_scale() * self.size_scale
 
     def _bubble_bottom(self) -> float:
-        """气泡跟着缩放走，始终悬在头顶上方一截。"""
         s = self._draw_scale()
         return BUBBLE_BOTTOM + (1.0 - s) * (sprite.CELL_H - 5.0)
 
-    # ------------------------------------------------------------ 大小
     def open_size(self):
         self.close_menu()
         self.close_wardrobe()
@@ -802,7 +852,6 @@ class BearPet:
             return 1.0
         return max(0.25, 1.0 - (self.y_ground - self.y) / 260.0)
 
-    # ------------------------------------------------------------ 主循环
     def run(self):
         last = time.perf_counter()
         budget = 1.0 / FPS
@@ -841,7 +890,6 @@ class BearPet:
 
 
 class Menu:
-    """自己画的右键菜单（不用 Win32 菜单，避免 NOACTIVATE 窗口的焦点问题）。"""
 
     ITEMS = (("说句话", "say"), ("敲会儿键盘", "work"), ("躺一会儿", "sleep"),
              ("投喂", "feed"), ("换装", "dress"), ("大小", "size"),
@@ -878,7 +926,7 @@ class Menu:
     def open_at(self, bear_x: float, bear_y: float):
         left, top, right, bottom = winlayer.work_area(self.win.hwnd)
         x = bear_x + sprite.W / 2 - self.W / 2
-        y = bear_y + 122 - self.h          # 正好落在皇冠上方（此时气泡已清空）
+        y = bear_y + 122 - self.h
         x = max(left + 8, min(right - self.W - 8, x))
         y = max(top + 8, min(bottom - self.h - 8, y))
         self.win.show()
@@ -936,7 +984,6 @@ class Menu:
 
     def destroy(self):
         self.win.destroy()
-
 
 
 def main():

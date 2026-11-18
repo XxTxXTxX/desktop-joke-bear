@@ -1,8 +1,3 @@
-"""自嘲熊桌面宠物 —— 启动入口。
-
-    python main.py        正常启动（带控制台）
-    pythonw main.py       无控制台启动
-"""
 from __future__ import annotations
 
 import ctypes
@@ -11,7 +6,6 @@ import sys
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 
-# 本地依赖目录（pip install --target .deps pillow）
 DEPS = os.path.join(BASE, ".deps")
 if os.path.isdir(DEPS) and DEPS not in sys.path:
     sys.path.insert(0, DEPS)
@@ -38,13 +32,12 @@ def _clear_pid():
 
 
 def _single_instance() -> bool:
-    """同名互斥体，防止一口气养出好几只熊。"""
     global _instance_handle
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     handle = kernel32.CreateMutexW(None, False, "Global\\DeskBearPet_singleton")
     if not handle:
         return True
-    if ctypes.get_last_error() == 183:      # ERROR_ALREADY_EXISTS
+    if ctypes.get_last_error() == 183:
         return False
     _instance_handle = handle
     return True

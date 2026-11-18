@@ -1,16 +1,11 @@
-"""大小面板：右键 → 大小，五档缩放。
-
-缩放只作用在画布内（窗口尺寸固定 300×340），精灵按底部对齐缩放，
-所以脚永远踩在同一条地平线上，影子也跟着缩。
-"""
 from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
 from . import art, sprite, winlayer
 
-STEPS = (0.70, 0.85, 1.00, 1.15, 1.30)
-LABELS = ("70%", "85%", "100%", "115%", "130%")
+STEPS = (0.50, 0.70, 0.85, 1.00, 1.20)
+LABELS = ("50%", "70%", "85%", "100%", "120%")
 
 MIN_SCALE = STEPS[0]
 MAX_SCALE = STEPS[-1]
@@ -58,7 +53,6 @@ class SizePanel:
                                     outline=(222, 190, 140, 255), width=1)
             elif i == self.hover:
                 d.rounded_rectangle(box, radius=9, fill=(238, 226, 206, 255))
-            # 用大小不一的圆点直观表示档位
             r = 3.0 + v * 5.0
             cx = (box[0] + box[2]) / 2
             cy = y + 11

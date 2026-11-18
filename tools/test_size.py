@@ -1,7 +1,3 @@
-"""大小档位自测：右键 → 大小 → 点档位 → 精灵缩放 / 气泡与嘴巴跟着走 / 持久化。
-
-用法： python tools/test_size.py
-"""
 from __future__ import annotations
 
 import ctypes
@@ -103,7 +99,6 @@ def main() -> int:
             pet.brain.speed = 0.0
             pet.open_size()
             h.step(0.2)
-        # 必须在面板重新定位之后再算点击坐标（熊会走动）
         cx = panel.win.x + panel.PAD + idx * panel.CELL_W + panel.CELL_W / 2
         cy = panel.win.y + panel.PAD + panel.HEADER + panel.CELL_H / 2
         h.click(panel.win.hwnd, cx, cy)
@@ -114,7 +109,6 @@ def main() -> int:
         assert pet.size_is_open is False, "选完档位面板应关闭"
         h.shot(f"size_{int(want*100)}")
 
-    # 缩放后嘴巴落点仍在熊身上（投喂测试）
     pet.set_size(1.30)
     h.step(0.2)
     mx_, my_ = pet._mouth_point()

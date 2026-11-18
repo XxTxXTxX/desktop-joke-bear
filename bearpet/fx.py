@@ -1,8 +1,3 @@
-"""变身特效：换装瞬间的"扫光 + 地面法阵 + 星屑"。
-
-全部是逐帧程序化绘制，不占额外素材；扫光用 L 掩膜做 Image.composite，
-两个版本的帧在图集里形状完全一致，所以换装看起来是"颜色从脚下漫上头顶"。
-"""
 from __future__ import annotations
 
 import math
@@ -12,14 +7,13 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from . import sprite
 
-# 粒子表：角度、半径、延迟、大小（固定种子 → 每次变身同一套轨迹）
 _RNG = random.Random(20261117)
 PARTICLES = [
     (_RNG.uniform(0, math.tau), _RNG.uniform(0.35, 1.0),
      _RNG.uniform(0.0, 0.55), _RNG.uniform(3.0, 6.2))
     for _ in range(24)
 ]
-DURATION = 0.95          # 变身总时长（秒）
+DURATION = 0.95
 
 
 def _smooth(t: float) -> float:
@@ -35,7 +29,6 @@ def _star(d: ImageDraw.ImageDraw, x: float, y: float, r: float, fill):
 
 def render_morph(a: Image.Image, b: Image.Image, t: float,
                  spark: tuple[int, int, int]) -> Image.Image:
-    """t∈[0,1]：0 = 旧装，1 = 新装。返回合成好的整窗画布。"""
     t = max(0.0, min(1.0, t))
     e = _smooth(t)
     W, H = a.size
@@ -45,7 +38,6 @@ def render_morph(a: Image.Image, b: Image.Image, t: float,
 
     out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 
-    # ---- 1. 地面法阵：扩张的环 + 旋转刻度
     ring = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     rd = ImageDraw.Draw(ring)
     fade = int(190 * (1.0 - e) ** 1.4)
@@ -67,14 +59,12 @@ def render_morph(a: Image.Image, b: Image.Image, t: float,
             rd.line([(x1, y1), (x2, y2)], fill=spark + (fade,), width=2)
     out.alpha_composite(ring)
 
-    # ---- 2. 从下往上的扫光换色
     y_sweep = ground - (ground - top) * e
     mask = Image.new("L", (W, H), 0)
     ImageDraw.Draw(mask).rectangle([0, y_sweep, W, H], fill=255)
     mask = mask.filter(ImageFilter.GaussianBlur(7))
     out.alpha_composite(Image.composite(b, a, mask))
 
-    # ---- 3. 扫光边缘的一道亮线
     line = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ld = ImageDraw.Draw(line)
     strength = math.sin(math.pi * min(1.0, t * 1.05))
@@ -89,7 +79,6 @@ def render_morph(a: Image.Image, b: Image.Image, t: float,
         line.alpha_composite(glow.filter(ImageFilter.GaussianBlur(6)))
     out.alpha_composite(line)
 
-    # ---- 4. 星屑：从脚边升起、边升边淡
     parts = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     pd = ImageDraw.Draw(parts)
     for ang, rad, delay, size in PARTICLES:
@@ -109,7 +98,6 @@ def render_morph(a: Image.Image, b: Image.Image, t: float,
 
 
 def render_flash(img: Image.Image, t: float, spark: tuple[int, int, int]) -> Image.Image:
-    """换装完成瞬间的一层柔光（t∈[0.6,1] 用）。"""
     strength = math.sin(math.pi * max(0.0, min(1.0, (t - 0.55) / 0.45)))
     if strength <= 0.03:
         return img

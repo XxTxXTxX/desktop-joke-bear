@@ -1,7 +1,3 @@
-"""换装系统自测（衣服版）：右键 → 换装面板 → 点衣服 → 变身 → 持久化。
-
-用法： python tools/test_wear.py
-"""
 from __future__ import annotations
 
 import ctypes
@@ -91,7 +87,6 @@ def main() -> int:
     h.step(0.6)
     log(f"start outfit={pet.outfit.id} wear={pet.wear}")
 
-    # 右键 → 换装
     cur(pet.x + sprite.W / 2, pet.y + sprite.GROUND - 90)
     post(hwnd, W.WM_RBUTTONUP)
     h.step(0.35)
@@ -109,7 +104,6 @@ def main() -> int:
         x, y = w._cell_box(row, col)
         return w.win.x + x + w.CELL_W / 2, w.win.y + y + w.CELL_H / 2
 
-    # 1. 头饰：草帽（col0 row1）
     cx, cy = cell_center(1, 0)
     h.click(w.win.hwnd, cx, cy)
     h.shot("morph_hat")
@@ -117,13 +111,11 @@ def main() -> int:
     log(f"after hat: wear={pet.wear}")
     h.shot("hat")
 
-    # 2. 脖子：围巾（col2 row1）
     cx, cy = cell_center(1, 2)
     h.click(w.win.hwnd, cx, cy)
     h.settle()
     log(f"after scarf: wear={pet.wear}")
 
-    # 3. 身上：连帽衫（col3 row1）
     cx, cy = cell_center(1, 3)
     h.click(w.win.hwnd, cx, cy)
     h.settle()
@@ -132,14 +124,12 @@ def main() -> int:
     h.step(0.2)
     h.shot("dressed")
 
-    # 4. 配色：赛博（swatch 5）
     sx, sy = w._swatch_box(5)
     h.click(w.win.hwnd, w.win.x + sx + 13, w.win.y + sy + 13)
     h.settle()
     log(f"after palette: outfit={pet.outfit.id} wear={pet.wear}")
     h.shot("cyber_dressed")
 
-    # 5. 再点一次草帽 → 脱掉
     cx, cy = cell_center(1, 0)
     h.click(w.win.hwnd, cx, cy)
     h.settle()
@@ -148,14 +138,12 @@ def main() -> int:
     cfg = os.path.join(BASE, ".bear.json")
     log("config=" + (open(cfg, encoding="utf-8").read() if os.path.exists(cfg) else "MISSING"))
 
-    # 6. 换到走路帧验证衣服跟随
     pet.brain.force("walk")
     pet.brain.dir = 1
     for i in range(6):
         h.step(0.09)
         h.shot(f"walk{i}")
 
-    # 7. 性能
     t0 = time.perf_counter()
     for i in range(30):
         pet.sprites.render("running-right", i * 40)

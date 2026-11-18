@@ -1,8 +1,3 @@
-"""换装系统自测：右键 → 换装 → 选一套 → 检查变身过程 / 落地状态 / 配置持久化。
-
-用法： python tools/test_outfit.py
-输出： preview/w_*.png，日志 preview/outfit_test.log
-"""
 from __future__ import annotations
 
 import ctypes
@@ -82,14 +77,12 @@ def main() -> int:
     log(f"start outfit={pet.outfit.id}")
     h.shot("start")
 
-    # 1. 右键打开主菜单
     set_cursor(pet.x + sprite.W / 2, pet.y + sprite.GROUND - 90)
     post(hwnd, W.WM_RBUTTONUP)
     h.step(0.35)
     log(f"menu_open={pet.menu_open} items={len(app.Menu.ITEMS)}")
     h.shot("menu")
 
-    # 2. 点「换装」（第 4 项，index 3）
     mi = 3
     mx = pet.menu.win.x + pet.menu.W / 2
     my = pet.menu.win.y + pet.menu.PAD + mi * pet.menu.ROW + pet.menu.ROW / 2
@@ -102,7 +95,6 @@ def main() -> int:
     log(f"after click: wardrobe_open={pet.wardrobe_is_open} menu_open={pet.menu_open}")
     h.shot("wardrobe")
 
-    # 3. 点「赛博」（index 5）
     wi = 5
     wx = pet.wardrobe.win.x + pet.wardrobe.W / 2
     wy = pet.wardrobe.win.y + pet.wardrobe.PAD + 12 + wi * pet.wardrobe.ROW + pet.wardrobe.ROW / 2
@@ -115,7 +107,6 @@ def main() -> int:
     h.step(0.02)
     log(f"morph started: {pet.morph is not None}")
 
-    # 4. 变身三段截图
     for tag, at in (("morph_25", 0.22), ("morph_50", 0.45), ("morph_75", 0.70)):
         while pet.morph is not None and pet.morph["t"] < at:
             h.step(0.01)
@@ -126,12 +117,10 @@ def main() -> int:
     log(f"morph finished -> outfit={pet.outfit.id}")
     h.shot("done")
 
-    # 5. 配置持久化
     cfg = os.path.join(BASE, ".bear.json")
     got = json.load(open(cfg, encoding="utf-8")) if os.path.exists(cfg) else None
     log(f"config={got}")
 
-    # 6. 再换一套（樱花）并确认帧缓存与调色板复用正常
     pet.apply_outfit(omod.BY_ID["sakura"])
     while pet.morph is not None:
         h.step(0.01)

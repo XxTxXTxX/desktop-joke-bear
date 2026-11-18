@@ -1,14 +1,3 @@
-"""提醒引擎：把"什么时候提醒"这件事实实在在地交给这台电脑的本地时钟。
-
-时间规格（由手机端填、本机解析）：
-    "20:00"        下一次 20:00（已经过了就明天）
-    "in:30m"       30 分钟后（也支持 in:2h / in:90 秒）
-    "at:2026-11-19T20:00"  绝对本地时间
-    ""             立刻
-
-重复：daily（每天同一时刻）/ weekday（工作日）/ 空。
-静音时段：跨午夜也支持，非紧急提醒会被压到静音结束再说，并标注"昨晚的"。
-"""
 from __future__ import annotations
 
 import calendar
@@ -33,7 +22,6 @@ def _parse_hhmm(spec: str) -> tuple[int, int] | None:
 
 
 def parse_when(spec: str | None, now: float) -> float | None:
-    """把时间规格解析成 epoch 秒；无法解析返回 None（调用方按"立刻"处理）。"""
     if not spec:
         return now
     s = spec.strip()
@@ -66,7 +54,6 @@ def parse_when(spec: str | None, now: float) -> float | None:
 
 
 def next_occurrence(due: float, repeat: str | None, now: float) -> float | None:
-    """重复提醒下一次的时间；非重复返回 None。"""
     if not repeat:
         return None
     nxt = due
@@ -75,7 +62,7 @@ def next_occurrence(due: float, repeat: str | None, now: float) -> float | None:
         nxt += 86400
         guard += 1
     if repeat == WEEKDAY:
-        while time.localtime(nxt).tm_wday >= 5:      # 周六日往后挪
+        while time.localtime(nxt).tm_wday >= 5:
             nxt += 86400
     return nxt
 
@@ -107,7 +94,6 @@ def format_delta(sec: float) -> str:
 
 
 class ReminderStore:
-    """提醒队列 + 本地时钟解析 + 静音时段。"""
 
     def __init__(self, path: str, quiet: tuple[str, str] = ("23:30", "08:00")):
         self.path = path
@@ -116,7 +102,6 @@ class ReminderStore:
         self._seq = 1
         self.load()
 
-    # ------------------------------------------------------------ 持久化
     def load(self):
         try:
             with open(self.path, "r", encoding="utf-8") as f:
@@ -142,7 +127,6 @@ class ReminderStore:
         except Exception:
             pass
 
-    # ------------------------------------------------------------ 时间策略
     def in_quiet_hours(self, now: float) -> bool:
         a, b = self.quiet
         pa, pb = _parse_hhmm(a), _parse_hhmm(b)
@@ -155,10 +139,9 @@ class ReminderStore:
             return False
         if start < end:
             return start <= cur < end
-        return cur >= start or cur < end            # 跨午夜
+        return cur >= start or cur < end
 
     def quiet_until(self, now: float) -> float:
-        """静音结束的时刻（下一个 end 时间点）。"""
         a, b = self.quiet
         pb = _parse_hhmm(b)
         lt = time.localtime(now)
@@ -171,7 +154,6 @@ class ReminderStore:
 
     def resolve(self, now: float, when: str | None, repeat: str | None,
                 urgent: bool) -> float:
-        """到点时间；静音时段内且不紧急 → 压到静音结束。"""
         due = parse_when(when, now)
         if due is None:
             due = now
@@ -179,7 +161,6 @@ class ReminderStore:
             due = max(due, self.quiet_until(due))
         return due
 
-    # ------------------------------------------------------------ 增删查
     def add(self, text: str, due: float, repeat: str | None = None,
             urgent: bool = False, source: str = "phone") -> Reminder:
         r = Reminder(id=self._seq, text=text[:120], due=due, repeat=repeat,
@@ -208,7 +189,6 @@ class ReminderStore:
         return [r for r in self.items if r.due > now][:limit]
 
     def pop_due(self, now: float) -> list[Reminder]:
-        """取走所有到点的提醒，并把重复的排到下一次。"""
         out, keep = [], []
         for r in self.items:
             if r.due <= now:

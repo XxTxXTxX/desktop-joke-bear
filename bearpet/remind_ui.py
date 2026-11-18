@@ -1,8 +1,3 @@
-"""提醒面板：看排队中的提醒、切换静音时段、看一眼手机端地址。
-
-手机上发消息是主入口，这个面板是"给她也能看见"的那一层：排了哪些提醒、
-静音时段是什么、现在连没连上，都摆在明面上。
-"""
 from __future__ import annotations
 
 import time
@@ -31,7 +26,6 @@ class ReminderPanel:
         self.image = None
         self._render()
 
-    # ------------------------------------------------------------ 布局
     def _quiet_box(self):
         return (PAD, PAD + 26, self.W - PAD, PAD + 48)
 
@@ -45,7 +39,6 @@ class ReminderPanel:
         y = self._quiet_box()[3] + 6 + i * self.ROW
         return (self.W - PAD - 18, y, self.W - PAD - 2, y + self.ROW - 8)
 
-    # ------------------------------------------------------------ 绘制
     def _render(self):
         pet = self.pet
         img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
@@ -53,7 +46,6 @@ class ReminderPanel:
         d.rounded_rectangle([0, 0, self.W - 1, self.H - 1], radius=13,
                             fill=(253, 251, 246, 243), outline=art.OUTLINE, width=2)
 
-        # 标题 + 连接状态
         d.text((PAD, PAD - 3), "提醒", font=self.small, fill=(150, 120, 96, 255))
         online = pet.remote is not None and pet.remote.status == "online"
         dot = (110, 200, 120, 255) if online else (214, 120, 110, 255)
@@ -61,7 +53,6 @@ class ReminderPanel:
         d.ellipse([self.W - PAD - 92, PAD + 1, self.W - PAD - 84, PAD + 9], fill=dot)
         d.text((self.W - PAD - 78, PAD - 3), state, font=self.small, fill=(120, 96, 74, 255))
 
-        # 静音时段开关
         x0, y0, x1, y1 = self._quiet_box()
         on = pet.quiet_on
         d.rounded_rectangle([x0, y0, x1, y1], radius=8,
@@ -71,7 +62,6 @@ class ReminderPanel:
         d.text((x0 + 8, y0 + 5), label, font=self.small, fill=(90, 70, 52, 255))
         d.text((x1 - 46, y0 + 5), "点我切换", font=self.small, fill=(150, 130, 110, 255))
 
-        # 待办列表
         now = time.time()
         up = pet.store.upcoming(now, self.ROWS)
         ly = y1 + 6
@@ -89,7 +79,6 @@ class ReminderPanel:
             dx0, dy0, dx1, dy1 = self._del_box(i)
             d.text((dx0 + 3, dy0 - 2), "×", font=self.font, fill=(190, 120, 110, 255))
 
-        # 地址提示
         hint_y = ly + self.ROWS * self.ROW + 2
         if pet.remote is not None:
             hint = pet.remote.base
@@ -97,7 +86,6 @@ class ReminderPanel:
             hint = "在 .bear.json 里填 remote.url / remote.token"
         d.text((PAD + 2, hint_y), hint[:46], font=self.small, fill=(176, 158, 138, 255))
 
-        # 底部按钮：添加 / 试一下
         ax0, ay0, ax1, ay1 = self._add_box()
         d.rounded_rectangle([ax0, ay0, ax1, ay1], radius=9, fill=(255, 233, 201, 255),
                             outline=(224, 151, 46, 255), width=2)
@@ -114,7 +102,6 @@ class ReminderPanel:
                font=self.small, fill=(120, 96, 74, 255))
         self.image = img
 
-    # ------------------------------------------------------------ 交互
     def open_at(self, bear_x: float, bear_y: float):
         left, top, right, bottom = winlayer.work_area(self.win.hwnd)
         x = bear_x + sprite.W / 2 - self.W / 2

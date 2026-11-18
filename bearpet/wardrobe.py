@@ -1,15 +1,9 @@
-"""换装面板：配色一行 + 四个部位的可穿戴清单（头饰 / 脸 / 脖子 / 身上）。
-
-点格子 = 穿上，再点一次 = 脱掉；换装过程交给 fx.render_morph 播变身动画。
-图标是现画的小向量图，不依赖素材。
-"""
 from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
 from . import art, garment, outfit as omod, sprite, winlayer
 
-# ---------------------------------------------------------------- 图标
 ICON = 30
 
 
@@ -99,7 +93,7 @@ class Wardrobe:
         self.win = winlayer.LayeredWindow(self.W, self.H, "bearpet-wardrobe", auto_show=False)
         self.win.on_move = self.hover_at
         self.win.on_left_up = self._on_up
-        self.hover = (-1, -1)          # (row, col)；行 -1 = 配色行
+        self.hover = (-1, -1)
         self.font = art._font(13)
         self.small = art._font(11)
         self.icons = {i.id: _icon(i) for i in garment.ITEMS}
@@ -108,7 +102,6 @@ class Wardrobe:
         self.image = None
         self._render()
 
-    # ------------------------------------------------------------ 布局
     def _cell_box(self, r: int, c: int):
         x = self.PAD + c * self.CELL_W
         y = self.PAD + self.HEADER + self.SWATCH_ROW + self.HEADER + r * self.CELL_H
@@ -118,7 +111,6 @@ class Wardrobe:
         return self.PAD + 6 + i * 38, self.PAD + self.HEADER
 
     def _pick(self, sx: int, sy: int):
-        """返回 ("outfit", idx) / ("item", row, col) / None"""
         lx, ly = sx - self.win.x, sy - self.win.y
         if not (0 <= lx < self.W and 0 <= ly < self.H):
             return None
@@ -137,7 +129,6 @@ class Wardrobe:
                     return ("item", r, c)
         return None
 
-    # ------------------------------------------------------------ 绘制
     def _render(self):
         img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
@@ -147,7 +138,6 @@ class Wardrobe:
         d.text((self.W - 104, self.PAD - 2), "点=穿上 再点=脱掉", font=self.small,
                fill=(176, 158, 138, 255))
 
-        # 配色行
         sy = self.PAD + self.HEADER
         for i, o in enumerate(omod.OUTFITS):
             x, y = self._swatch_box(i)
@@ -159,7 +149,6 @@ class Wardrobe:
                 d.ellipse([x + 20, y + 20, x + 30, y + 30], fill=o.crown + (255,),
                           outline=art.OUTLINE, width=1)
 
-        # 部位表头
         hy = sy + self.SWATCH_ROW
         for c, (slot, label) in enumerate(garment.SLOTS):
             cx = self.PAD + c * self.CELL_W + self.CELL_W / 2
@@ -169,7 +158,6 @@ class Wardrobe:
                     (self.PAD + (c + 1) * self.CELL_W - 8, hy + self.HEADER - 4)],
                    fill=(226, 214, 198, 255), width=1)
 
-        # 单品格子
         for c, (slot, _label) in enumerate(garment.SLOTS):
             for r, item in enumerate(self._slot_items[c]):
                 x, y = self._cell_box(r, c)
@@ -188,7 +176,6 @@ class Wardrobe:
                        font=self.small, fill=(58, 40, 26, 255) if on else (110, 92, 74, 255))
         self.image = img
 
-    # ------------------------------------------------------------ 交互
     def open_at(self, bear_x: float, bear_y: float):
         left, top, right, bottom = winlayer.work_area(self.win.hwnd)
         x = bear_x + sprite.W / 2 - self.W / 2
@@ -231,7 +218,6 @@ class Wardrobe:
             self.close_and_reopen()
 
     def close_and_reopen(self):
-        """换完一件继续留在面板里（变身动画在熊身上播，不打断选衣服）。"""
         self._render()
         self.win.blit(self.image)
 

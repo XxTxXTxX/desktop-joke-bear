@@ -1,15 +1,3 @@
-"""手机 → 电脑 提醒链路自测。
-
-起一个真的中继服务（子进程），用 HTTP 模拟手机发消息，验证：
-    1. 健康检查 / 令牌鉴权 / 长轮询
-    2. 立即提醒 → 桌宠说出来
-    3. 定时提醒（in:3s）→ 到点才说
-    4. 重复提醒（daily）→ 触发后排到明天
-    5. 静音时段把非紧急提醒压到静音结束
-    6. 长轮询 since 落盘（离线补发）不重复
-
-用法： python tools/test_remote.py
-"""
 from __future__ import annotations
 
 import json
@@ -24,7 +12,7 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(BASE, ".deps"))
 sys.path.insert(0, BASE)
 
-from bearpet import app, reminder  # noqa: E402
+from bearpet import app, reminder
 
 PORT = 8799
 TOKEN = "test-token-123"
@@ -62,7 +50,6 @@ def phone_send(text, at="", repeat=""):
 
 
 def main() -> int:
-    # ---------- 0. 单元：时间解析与静音时段 ----------
     now = time.mktime((2026, 11, 19, 21, 0, 0, 0, 0, -1))
     cases = [("20:00", 86400 - 3600), ("in:30m", 1800), ("in:2h", 7200),
              ("at:2026-11-19T22:00", 3600), ("", 0)]
@@ -79,7 +66,6 @@ def main() -> int:
     assert store.resolve(t_late, "in:5m", None, urgent=True) < t_late + 400, "紧急应直接送达"
     log("unit ok: parse_when / quiet hours / urgent bypass")
 
-    # ---------- 1. 起中继 ----------
     env = dict(os.environ, PET_PORT=str(PORT), PET_TOKEN=TOKEN, PET_BIND="127.0.0.1")
     data_file = os.path.join(BASE, "relay", "messages.jsonl")
     if os.path.exists(data_file):
@@ -102,7 +88,6 @@ def main() -> int:
         assert st == 401, f"错误令牌应 401，实际 {st}"
         log("auth ok: 错误令牌 401")
 
-        # ---------- 2. 立即提醒 ----------
         cfg_path = os.path.join(BASE, ".bear.json")
         cfg = json.load(open(cfg_path, encoding="utf-8")) if os.path.exists(cfg_path) else {}
         cfg.update({"remote": {"url": URL, "token": TOKEN}, "quiet": ["23:30", "08:00"], "quiet_on": True})
@@ -112,7 +97,7 @@ def main() -> int:
                 os.remove(p)
 
         pet = app.BearPet()
-        pet.store.quiet = ("00:00", "00:00")      # 现在不是静音时段
+        pet.store.quiet = ("00:00", "00:00")
         last = time.perf_counter()
         t0 = time.time()
 
@@ -135,7 +120,6 @@ def main() -> int:
         log(f"speech after immediate = {pet.brain.speech!r}")
         assert pet.brain.speech == "现在就喝水", "立即提醒没有送达"
 
-        # ---------- 3. 定时提醒 ----------
         phone_send("三秒后再提醒一次", "in:3s")
         pump(1.5)
         log(f"t+1.5s speech={pet.brain.speech!r} 待办={len(pet.store.items)}")
@@ -144,14 +128,12 @@ def main() -> int:
         log(f"t+5.0s speech={pet.brain.speech!r}")
         assert pet.brain.speech == "三秒后再提醒一次", "定时提醒没有按点触发"
 
-        # ---------- 4. 重复提醒 ----------
         phone_send("每天喝水", "in:1s", "daily")
         pump(2.5)
         up = pet.store.upcoming(time.time(), 5)
         log(f"repeat 待办: {[(r.text, r.due_str(), r.repeat) for r in up]}")
         assert any(r.repeat == "daily" for r in up), "daily 没有排到下一次"
 
-        # ---------- 5. 离线补发（since 落盘） ----------
         pet.shutdown()
         phone_send("关机期间发的 1")
         phone_send("关机期间发的 2")
@@ -163,7 +145,6 @@ def main() -> int:
         pump(2.0)
         log(f"after replay speech={pet.brain.speech!r} 待办={len(pet.store.items)}")
 
-        # ---------- 6. 长轮询超时不报错 ----------
         t = time.time()
         st, js = http("/api/poll?since=99999&timeout=2")
         log(f"long-poll empty => {st} {js['messages']} 用时 {time.time()-t:.1f}s")

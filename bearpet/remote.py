@@ -1,12 +1,3 @@
-"""远端客户端：长轮询中继服务器，把手机发来的消息拉进来。
-
-设计取舍：
-  * 用长轮询而不是 WebSocket —— 断线重连、公司网络代理、手机热点都能过，
-    不用引第三方依赖，服务端用标准库就能实现。
-  * `since` 落盘（`.remote_state.json`）：电脑关机/断网期间的消息，
-    下次连上会自动补发，不会丢。
-  * 线程只负责收，收完丢进队列；窗口线程每帧 drain，避免跨线程碰 UI。
-"""
 from __future__ import annotations
 
 import json
@@ -28,14 +19,13 @@ class RemoteClient(threading.Thread):
         self.state_path = state_path
         self.poll_timeout = poll_timeout
         self.since = self._load_since()
-        self.status = "offline"          # offline | online | error
+        self.status = "offline"
         self.last_error = ""
         self.last_seen = 0.0
         self._queue: list[dict] = []
         self._lock = threading.Lock()
         self._stop = threading.Event()
 
-    # ------------------------------------------------------------ 状态
     def _load_since(self) -> int:
         try:
             with open(self.state_path, "r", encoding="utf-8") as f:
@@ -60,7 +50,6 @@ class RemoteClient(threading.Thread):
     def stop(self):
         self._stop.set()
 
-    # ------------------------------------------------------------ 主循环
     def run(self):
         backoff = 2.0
         self.health()
@@ -79,7 +68,7 @@ class RemoteClient(threading.Thread):
                         self._queue.extend(msgs)
                     self.since = max(int(m.get("id", 0)) for m in msgs)
                     self._save_since()
-            except Exception as exc:                 # 网络错误 → 退避重连
+            except Exception as exc:
                 self.status = "error"
                 self.last_error = f"{type(exc).__name__}: {exc}"
                 time.sleep(backoff)
@@ -87,7 +76,6 @@ class RemoteClient(threading.Thread):
         self.status = "offline"
 
     def health(self) -> bool:
-        """快速探一下服务器，面板上的状态点不用等到第一次长轮询返回。"""
         try:
             req = urllib.request.Request(f"{self.base}/api/health")
             with urllib.request.urlopen(req, timeout=6) as resp:
@@ -119,7 +107,6 @@ class RemoteClient(threading.Thread):
             return None
         return data.get("messages", [])
 
-    # ------------------------------------------------------------ 发送（自测/双向用）
     def send(self, text: str, when: str = "", repeat: str = "", urgent: bool = False) -> dict:
         body = json.dumps({"text": text, "at": when, "repeat": repeat,
                            "urgent": urgent}).encode("utf-8")

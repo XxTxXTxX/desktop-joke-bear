@@ -1,19 +1,3 @@
-#!/usr/bin/env python3
-"""桌宠中继服务（纯标准库，可直接丢到 VPS / 树莓派 / 家里任意一台常开的机器）。
-
-    python relay.py                 # 默认 0.0.0.0:8787
-    PET_PORT=9000 PET_TOKEN=xxx python relay.py
-
-接口：
-    GET  /                      手机端网页（发消息用，令牌存在 localStorage）
-    POST /api/send              {text, at, repeat, urgent} → 入队并唤醒长轮询
-    GET  /api/poll?since=N     长轮询，最多挂 25 秒，返回 id>N 的消息
-    GET  /api/health            健康检查 + 服务器时间
-    GET  /api/recent?since=N   非阻塞拉取（调试用）
-
-令牌：环境变量 PET_TOKEN，或首次启动自动生成到 relay/token.txt。
-消息留在 relay/messages.jsonl，超过 7 天自动清理。
-"""
 from __future__ import annotations
 
 import json
@@ -175,7 +159,6 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "PetRelay/1.0"
     token = ""
 
-    # ------------------------------------------------------------ 工具
     def _send_json(self, obj, code=200):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
@@ -193,7 +176,6 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
-    # ------------------------------------------------------------ 路由
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")

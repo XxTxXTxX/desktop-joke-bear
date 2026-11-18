@@ -1,15 +1,3 @@
-"""换装系统：按"角色"重映射图集的调色板。
-
-图集是平涂 + 抗锯齿边的插画，直接按色值替换会留下锯齿残影。这里先把整张图集
-量化成 256 色索引图（一次，误差 <1/255），再把每个调色板条目按 HSV 归类到
-"角色"（描边 / 身体 / 皇冠 / 披风 / 饰件），最后按角色的目标色重新生成调色板。
-换装 = 换一张调色板 + 一次 P→RGBA 转换，帧缓存按 (outfit, state, frame) 维度。
-
-重映射公式（保留原图的明暗层次）：
-    k = v_src / v_base            # 相对亮度
-    k <= 1 → new = target * k     # 暗部（向描边过渡）
-    k >  1 → new = lerp(target, 白色, (k-1)/(1/255 - v_base))  # 亮部（向白过渡）
-"""
 from __future__ import annotations
 
 import colorsys
@@ -17,7 +5,6 @@ from dataclasses import dataclass, field
 
 from PIL import Image
 
-# ---------------------------------------------------------------- 角色
 OUTLINE, BODY, CROWN, CAPE, ACCENT, METAL = "outline", "body", "crown", "cape", "accent", "metal"
 
 
@@ -25,11 +12,10 @@ def classify(r: int, g: int, b: int) -> str:
     h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
     hue = h * 360.0
     if s < 0.10 and v > 0.55:
-        return BODY                      # 白色身体
+        return BODY
     if v < 0.28:
         if s < 0.55:
-            return OUTLINE               # 纯黑描边
-        # 饱和色的暗部：按色相归到对应角色
+            return OUTLINE
     if s >= 0.35:
         if hue < 22 or hue >= 338:
             return CAPE
@@ -65,7 +51,6 @@ class Outfit:
         return getattr(self, role)
 
 
-# ---------------------------------------------------------------- 预设
 OUTFITS: list[Outfit] = [
     Outfit("classic", "原版",
            body=(255, 255, 255), outline=(26, 20, 22), crown=(255, 205, 45),
@@ -97,9 +82,7 @@ BY_ID = {o.id: o for o in OUTFITS}
 DEFAULT = OUTFITS[0]
 
 
-# ---------------------------------------------------------------- 调色板重映射
 class PaletteMapper:
-    """把量化后的索引图集按角色重新上色，结果按 outfit id 缓存。"""
 
     def __init__(self, atlas_p: Image.Image):
         self.atlas_p = atlas_p
@@ -115,7 +98,6 @@ class PaletteMapper:
         for i in range(256):
             r, g, b = pal[i * 3], pal[i * 3 + 1], pal[i * 3 + 2]
             self.roles[i] = classify(r, g, b)
-        # 每个角色的代表色 = 该角色里出现最多（近似为最亮最饱和）的颜色
         stats: dict[str, list[tuple[int, int, int, float]]] = {}
         hist = self.atlas_p.histogram()[:256]
         for i in range(256):
@@ -124,7 +106,6 @@ class PaletteMapper:
             h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
             stats.setdefault(role, []).append((i, hist[i], v, s))
         for role, items in stats.items():
-            # 用"出现最多的中心色"作为基准亮度
             items.sort(key=lambda t: -t[1])
             _i, _n, v, _s = items[0]
             self.bases[role] = (v, items[0][3])
@@ -175,7 +156,6 @@ class PaletteMapper:
         return "\n".join(lines)
 
 
-# ---------------------------------------------------------------- 自检
 def _demo(path: str = "outfits.png"):
     from . import sprite
     base = Image.open(sprite.DEFAULT_SHEET).convert("RGBA")

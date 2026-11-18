@@ -1,10 +1,3 @@
-"""轻松熊风格的程序化矢量绘制（平涂 + 粗描边，无素材依赖）。
-
-配色直接取自参考图取样：
-    毛色  #CE7E05  耳内 #FFC61A  描边 #331208  肚皮/嘴部 纯白
-造型特征：大圆头、两侧圆耳 + 黄色耳内、白眼眶式的白色嘴部、点状眼、
-          ω 形嘴、白色肚皮、短粗四肢、通体一圈粗深棕描边。
-"""
 from __future__ import annotations
 
 import math
@@ -13,57 +6,52 @@ from dataclasses import dataclass
 
 from PIL import Image, ImageDraw, ImageFont
 
-# ---------------------------------------------------------------- 画布常量
-W, H = 300, 320          # 逻辑窗口尺寸
-SS = 2                   # 超采样倍数
-CX = W // 2              # 熊的水平中心
-FY = H - 14              # 脚底基线
+W, H = 300, 320
+SS = 2
+CX = W // 2
+FY = H - 14
 
-# ---------------------------------------------------------------- 配色
-FUR       = (206, 126, 5, 255)      # #CE7E05
+FUR       = (206, 126, 5, 255)
 FUR_DARK  = (176, 104, 4, 255)
-EAR_IN    = (255, 198, 26, 255)     # #FFC61A
+EAR_IN    = (255, 198, 26, 255)
 WHITE     = (255, 255, 255, 255)
 CREAM     = (255, 252, 245, 255)
-OUTLINE   = (51, 18, 8, 255)        # #331208
+OUTLINE   = (51, 18, 8, 255)
 NOSE      = (51, 18, 8, 255)
 MOUTH_BG  = (255, 255, 255, 255)
 BUBBLE_BG = (255, 253, 248, 255)
 
-_OW = 3.4        # 默认描边宽度（逻辑像素）
-HEAD_R = 49.0    # 头半径
+_OW = 3.4
+HEAD_R = 49.0
 BUBBLE_BOTTOM = 126.0
 
 
-# ---------------------------------------------------------------- 姿态
 @dataclass
 class Pose:
-    bob: float = 0.0            # 整体竖直偏移（负值=向上）
-    squash: float = 1.0         # 躯干竖直缩放（呼吸）
-    tilt: float = 0.0           # 整只熊旋转角（度）
-    head_tilt: float = 0.0      # 头倾斜（度，负=向左歪）
-    head_bob: float = 0.0       # 头额外上下偏移
-    leg_phase: float = 0.0      # 走路相位（弧度）
+    bob: float = 0.0
+    squash: float = 1.0
+    tilt: float = 0.0
+    head_tilt: float = 0.0
+    head_bob: float = 0.0
+    leg_phase: float = 0.0
     walking: bool = False
     sit: bool = False
-    eye: str = "open"           # open | half | closed | wide | x
-    eye_dx: float = 0.0         # 眼珠横向偏移 -1..1
-    eye_dy: float = 0.0         # 眼珠纵向偏移 -1..1
-    blink: float = 1.0          # 1=全开 0=闭眼
-    mouth: str = "flat"         # flat(ω) | frown | open | wave
+    eye: str = "open"
+    eye_dx: float = 0.0
+    eye_dy: float = 0.0
+    blink: float = 1.0
+    mouth: str = "flat"
     mouth_open: float = 0.0
-    arm_swing: float = 0.0      # 手臂摆动幅度
-    arm_spread: float = 0.0     # 手臂张开 0..1
-    sweat: float = 0.0          # 汗滴透明度 0..1
-    shadow: float = 1.0         # 地面阴影不透明度 0..1
-    tuft: float = 0.0           # 保留字段（此造型无呆毛）
-    zzz: float = 0.0            # >0 时显示 zzz 相位
+    arm_swing: float = 0.0
+    arm_spread: float = 0.0
+    sweat: float = 0.0
+    shadow: float = 1.0
+    tuft: float = 0.0
+    zzz: float = 0.0
     alpha: float = 1.0
 
 
-# ---------------------------------------------------------------- 画笔
 class Pen:
-    """在超采样画布上以逻辑坐标作画。"""
 
     def __init__(self, w: int, h: int, ss: int = SS):
         self.ss = ss
@@ -76,7 +64,6 @@ class Pen:
 
     def blob(self, cx, cy, rx, ry, fill, outline=None, w=_OW,
              wobble=0.0, phase=0.0, n=84):
-        """极坐标圆润色块；wobble 让轮廓带一点手绘不规则感。"""
         pts = []
         for i in range(n):
             a = 2.0 * math.pi * i / n
@@ -129,9 +116,8 @@ class Pen:
         self.img.paste(img, (int(dx * self.ss), int(dy * self.ss)), img)
 
 
-# ---------------------------------------------------------------- 头部
 EAR_R = 18.5
-EAR_OFF = (40.0, 36.5)      # 相对头心
+EAR_OFF = (40.0, 36.5)
 
 
 def _head_layer(pose: Pose) -> Pen:
@@ -139,25 +125,19 @@ def _head_layer(pose: Pose) -> Pen:
     c = B / 2.0
     pen = Pen(B, B)
 
-    # 耳朵：外圈毛色 + 内圈黄色（内圈偏外下方，露出月牙）
     for sx in (-1, 1):
         ex, ey = c + sx * EAR_OFF[0], c - EAR_OFF[1]
         pen.blob(ex, ey, EAR_R, EAR_R, FUR, OUTLINE, _OW)
         pen.blob(ex + sx * 3.2, ey + 2.6, 12.0, 11.0, EAR_IN, OUTLINE, 2.6)
 
-    # 头
     pen.blob(c, c, HEAD_R, HEAD_R * 0.99, FUR, OUTLINE, _OW)
 
-    # 嘴部白色区域（无描边，平涂）
     pen.blob(c, c + 16.5, 23.5, 17.0, WHITE)
-    # 鼻子
     pen.blob(c, c + 5.5, 9.6, 6.8, NOSE)
 
-    # 眼睛
     for sx in (-1, 1):
         _eye(pen, c + sx * 20.0, c - 5.5, pose)
 
-    # 嘴
     _mouth(pen, c, c + 15.5, pose)
     return pen
 
@@ -175,11 +155,10 @@ def _eye(pen: Pen, x: float, y: float, pose: Pose):
     elif m == "wide":
         pen.ellipse(ex, ey, 7.2, 7.6, WHITE, OUTLINE, 2.2)
         pen.ellipse(ex, ey + 0.4, 3.4, 3.6, OUTLINE)
-    else:  # open / half
+    else:
         ry = 5.4 * max(0.10, pose.blink)
         pen.ellipse(ex, ey, 5.4, ry, OUTLINE)
         if m == "half" and pose.blink > 0.5:
-            # 上眼睑：用毛色盖掉上半，做成半眯
             pen.ellipse(ex, ey - ry * 0.44, 5.9, ry * 0.46, FUR)
 
 
@@ -196,17 +175,15 @@ def _mouth(pen: Pen, cx: float, y: float, pose: Pose):
                (cx + 3.1, y + 1.8), (cx + 6.2, y)]
         pen.d.line(pen._p(pts), fill=OUTLINE,
                    width=max(1, int(round(2.4 * pen.ss))), joint="curve")
-    else:  # ω
+    else:
         pen.arc(cx - 5.0, y, 5.0, 4.2, 12, 168, OUTLINE, 2.7)
         pen.arc(cx + 5.0, y, 5.0, 4.2, 12, 168, OUTLINE, 2.7)
 
 
-# ---------------------------------------------------------------- 整只熊
 def render_bear(pose: Pose) -> Image.Image:
     pen = Pen(W, H)
     fy = FY + pose.bob
 
-    # 地面阴影
     if pose.shadow > 0.02:
         a = int(max(0, min(255, 52 * pose.shadow)))
         pen.ellipse(CX, FY + 3.0, 42.0, 7.0, (40, 20, 8, a))
@@ -216,7 +193,6 @@ def render_bear(pose: Pose) -> Image.Image:
     torso_cy = (fy - 13.0) - torso_ry
     torso_top = torso_cy - torso_ry
 
-    # 腿
     if pose.sit:
         for sx in (-1, 1):
             hip = (CX + sx * 17.0, fy - 22.0)
@@ -231,11 +207,9 @@ def render_bear(pose: Pose) -> Image.Image:
             foot = (CX + sx * 18.0 + swing, fy - 9.0 - lift)
             pen.capsule(hip, foot, 17.0, FUR, OUTLINE, _OW)
 
-    # 躯干 + 白肚皮
     pen.blob(CX, torso_cy, torso_rx, torso_ry, FUR, OUTLINE, _OW, wobble=0.012, phase=0.4)
     pen.blob(CX, torso_cy + 4.0, torso_rx * 0.60, torso_ry * 0.66, WHITE)
 
-    # 手臂（画在身体前面，盖住肚皮边缘）
     for i, sx in enumerate((-1, 1)):
         sh = (CX + sx * 30.0, torso_cy - torso_ry * 0.30)
         swing = math.sin(pose.leg_phase + (0.0 if i == 0 else math.pi)) * pose.arm_swing
@@ -244,14 +218,12 @@ def render_bear(pose: Pose) -> Image.Image:
         paw = (sh[0] + sx * math.sin(theta) * L, sh[1] + math.cos(theta) * L)
         pen.capsule(sh, paw, 18.0, FUR, OUTLINE, _OW)
 
-    # 头（独立图层，可旋转）
     head_cx = CX
     head_cy = fy - 104.0 + pose.head_bob
     hl = _head_layer(pose)
     c = 78.0
     pen.paste(hl, head_cx - c, head_cy - c, angle=pose.head_tilt, cx=c, cy=c)
 
-    # 汗滴
     if pose.sweat > 0.02:
         a = int(max(0, min(255, 225 * pose.sweat)))
         hx, hy = head_cx + 36.0, head_cy - 30.0
@@ -290,7 +262,6 @@ def _apply_alpha(img: Image.Image, a: float) -> Image.Image:
     return out
 
 
-# ---------------------------------------------------------------- 气泡
 _FONT_CACHE: dict[int, ImageFont.FreeTypeFont] = {}
 _FONT_PATHS = [
     r"C:\Windows\Fonts\msyhbd.ttc",
@@ -332,7 +303,6 @@ def _wrap(text: str, font, max_w: float) -> list[str]:
 
 def draw_bubble(img: Image.Image, text: str, alpha: float = 1.0,
                 tail_x: float | None = None, bottom: float | None = None) -> Image.Image:
-    """在图像上方画一个带小尾巴的对话气泡。"""
     if not text or alpha <= 0.01:
         return img
     font = _font(16)
@@ -364,7 +334,6 @@ def draw_bubble(img: Image.Image, text: str, alpha: float = 1.0,
     return Image.alpha_composite(img, layer)
 
 
-# ---------------------------------------------------------------- 自检预览
 def _preview(path: str = "preview.png"):
     poses = [
         ("idle", Pose()),

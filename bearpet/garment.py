@@ -1,18 +1,3 @@
-"""换装：真正的"穿衣服"。在动画帧上叠加程序化绘制的衣物/配饰。
-
-难点是配件要跟着动画走（走路时头会点、身体会缩、摔倒时整个躺下），
-所以先给每一帧求锚点，再用锚点摆配件：
-
-    锚点来源 —— 图集里唯一稳定且有语义的部件是皇冠（黄色），它在每一帧都
-    正好坐在头顶上。取皇冠掩膜的 bbox 中心当头部中心，bbox 下沿当头顶，
-    再用固定的头半径推出脸/颈/躯干，脚底取 alpha 掩膜下沿。
-
-    掩膜做法：整表量化成 256 色索引图后，再复制一份"恒等灰度调色板"，
-    转成 L 就得到"像素值 = 调色板索引"的图，于是按角色做的 256 项 LUT
-    可以走 C 层 point()，再用 MinFilter 腐蚀掉杂点。
-
-图层分前后：背包/翅膀在身后，帽子/眼镜/围巾/上衣在身前。
-"""
 from __future__ import annotations
 
 import colorsys
@@ -24,24 +9,23 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 from . import outfit as omod
 from . import sprite as sp
 
-# ---------------------------------------------------------------- 锚点
 HEAD_R = 48.0
 CROWN_MARGIN = 2.0
 
 
 @dataclass
 class Anchors:
-    cx: float          # 头部水平中心（= 眼睛中点）
-    head_top: float    # 头顶
-    head_cy: float     # 头心
-    neck_y: float      # 脖子
+    cx: float
+    head_top: float
+    head_cy: float
+    neck_y: float
     shoulder_y: float
     feet_y: float
-    half_w: float      # 躯干半宽
-    eye_l: float = 0.0     # 左眼（图中较小 x）
-    eye_r: float = 0.0     # 右眼
+    half_w: float
+    eye_l: float = 0.0
+    eye_r: float = 0.0
     eye_y: float = 0.0
-    eye_dx: float = 0.0    # 两眼间距的一半
+    eye_dx: float = 0.0
 
     @property
     def eye_span(self) -> float:
@@ -51,11 +35,10 @@ class Anchors:
 def _role_mask(idx_cell: Image.Image, mapper, role: str) -> Image.Image:
     lut = [255 if mapper.roles[i] == role else 0 for i in range(256)]
     m = idx_cell.point(lut)
-    return m.filter(ImageFilter.MinFilter(5))     # 腐蚀掉抗锯齿串色的杂点
+    return m.filter(ImageFilter.MinFilter(5))
 
 
 def _crown_mask(idx_cell: Image.Image, mapper) -> Image.Image:
-    """皇冠：只用高饱和高亮的黄，避开披风/身体交界处的串色。"""
     pal = mapper.base_palette
     lut = [0] * 256
     for i in range(256):
@@ -76,7 +59,6 @@ def _dark_lut(mapper) -> list[int]:
 
 
 def _blobs(mask: Image.Image, box, min_area=12, max_area=260):
-    """在给定矩形里做一次 4 邻域连通域，返回 (cx, cy, area, w, h)。"""
     x0, y0, x1, y1 = [int(v) for v in box]
     x0, y0 = max(0, x0), max(0, y0)
     x1, y1 = min(mask.width, x1), min(mask.height, y1)
@@ -107,19 +89,14 @@ def _blobs(mask: Image.Image, box, min_area=12, max_area=260):
 
 
 def _find_eyes(idx_cell: Image.Image, mapper, cx: float, head_cy: float, head_w: float):
-    """在头部区域里找两只眼睛（深色小圆点），返回 (左眼x, 右眼x, y) 或 None。
-
-    眼睛是图集里唯一"小而圆、左右成对、和头心同高"的深色块，
-    比用皇冠/外接框推出来的头心准得多 —— 逐帧检测，因此走路时也不会错位。
-    """
     radius_x = head_w * 0.55
     radius_y = head_w * 0.42
     box = (cx - radius_x, head_cy - radius_y, cx + radius_x, head_cy + radius_y)
     cands = []
     for bx, by, area, w, h in _blobs(idx_cell.point(_dark_lut(mapper)), box):
-        if w > 13 or h > 13:                 # 眼睛/闭眼弧线不会太大
+        if w > 13 or h > 13:
             continue
-        if abs(bx - cx) > radius_x * 0.85:   # 太靠边的是剑/披风
+        if abs(bx - cx) > radius_x * 0.85:
             continue
         if abs(by - head_cy) > radius_y * 0.8:
             continue
@@ -145,7 +122,7 @@ def _find_eyes(idx_cell: Image.Image, mapper, cx: float, head_cy: float, head_w:
             score = (abs(y1 - y2) * 4.0
                      + abs(span - span_ideal) * 3.0
                      + abs(a1 - a2) * 0.3
-                     + abs(mid - cx) * 0.4      # 只是弱先验：跑动帧头会整体偏移
+                     + abs(mid - cx) * 0.4
                      + area_pen)
             if best is None or score < best[0]:
                 best = (score, x1, x2, (y1 + y2) / 2.0)
@@ -164,12 +141,10 @@ def compute_anchors(sheet: "sp.SpriteSheet", state: str, idx: int) -> Anchors:
     alpha_bb = sheet.alpha.crop(box).getbbox()
     feet_y = float(alpha_bb[3]) if alpha_bb else 203.0
 
-    # 1. 皇冠下沿 = 头顶。皇冠每帧都坐在头顶上，但它本身会左右偏，只取纵向
     cb = _crown_mask(idx_cell, sheet.mapper).getbbox()
     head_top = (cb[3] - CROWN_MARGIN) if cb is not None else (alpha_bb[1] if alpha_bb else 20.0) + 26.0
     head_cy = head_top + HEAD_R
 
-    # 2. 头心：取头心那一行白色像素的水平范围中点
     body = _role_mask(idx_cell, sheet.mapper, omod.BODY)
     y = int(max(0, min(sp.CELL_H - 1, head_cy)))
     rb = body.crop((0, y, sp.CELL_W, y + 1)).getbbox()
@@ -180,13 +155,11 @@ def compute_anchors(sheet: "sp.SpriteSheet", state: str, idx: int) -> Anchors:
         cx = ((alpha_bb[0] + alpha_bb[2]) / 2.0) if alpha_bb else sp.CELL_W / 2.0
         head_w = HEAD_R * 2.0
 
-    # 3. 眼睛：逐帧实测，直接以两眼为基准（这也是所有面部配件的对齐依据）
     eyes = _find_eyes(idx_cell, sheet.mapper, cx, head_cy, head_w)
     if eyes is not None:
         ex_l, ex_r, ey = eyes
         cx = (ex_l + ex_r) / 2.0
         eye_dx = (ex_r - ex_l) / 2.0
-        # 眼睛略高于头心，用它反推头心（比皇冠外推更贴脸）
         head_cy = ey + head_w * 0.07
     else:
         eye_dx = head_w * 0.165
@@ -200,13 +173,12 @@ def compute_anchors(sheet: "sp.SpriteSheet", state: str, idx: int) -> Anchors:
                    eye_l=ex_l, eye_r=ex_r, eye_y=ey, eye_dx=eye_dx)
 
 
-# ---------------------------------------------------------------- 单品
 @dataclass
 class Item:
     id: str
     name: str
-    slot: str          # head | face | neck | body
-    layer: str = "front"   # front | behind
+    slot: str
+    layer: str = "front"
     tint: tuple[int, int, int] = (90, 90, 96)
 
 
@@ -217,7 +189,6 @@ def _shade(c, k):
     return tuple(max(0, min(255, int(v * k))) for v in c[:3]) + (255,)
 
 
-# -- 头饰 ----------------------------------------------------------
 def _draw_straw(d, a: Anchors, t: float):
     col, dark = (226, 190, 108), (176, 138, 64)
     by = a.head_top + 4
@@ -249,7 +220,6 @@ def _draw_cap(d, a: Anchors, t: float):
               outline=(30, 56, 108), width=2)
 
 
-# -- 面部 ----------------------------------------------------------
 def _draw_round_glasses(d, a: Anchors, t: float):
     r = max(6.0, min(a.eye_dx * 0.95, a.half_w * 0.36))
     for ex in (a.eye_l, a.eye_r):
@@ -279,7 +249,6 @@ def _draw_blush(d, a: Anchors, t: float):
         d.ellipse([x - rx, y - ry, x + rx, y + ry], fill=(255, 150, 160, 130))
 
 
-# -- 脖子 ----------------------------------------------------------
 def _draw_scarf(d, a: Anchors, t: float):
     col, dark = (206, 62, 62), (160, 40, 40)
     y = a.neck_y
@@ -304,9 +273,7 @@ def _draw_bowtie(d, a: Anchors, t: float):
               outline=(110, 26, 50), width=2)
 
 
-# -- 身上 ----------------------------------------------------------
 def _torso_mask(cell: Image.Image, a: Anchors) -> Image.Image:
-    """把上衣的上色范围限制在：躯干 alpha 之内、脖子以下、脚以上，并内缩留出描边。"""
     inner = cell.getchannel("A").filter(ImageFilter.MinFilter(7))
     band = Image.new("L", cell.size, 0)
     ImageDraw.Draw(band).rectangle([0, a.neck_y + 2, cell.width, a.feet_y - 2], fill=255)
@@ -319,16 +286,13 @@ def _draw_hoodie(cell: Image.Image, a: Anchors, t: float):
     paint = Image.new("RGBA", cell.size, col + (232,))
     cell.alpha_composite(Image.composite(paint, Image.new("RGBA", cell.size, (0, 0, 0, 0)), mask))
     d = ImageDraw.Draw(cell)
-    # 领口
     d.arc([a.cx - 30, a.neck_y - 16, a.cx + 30, a.neck_y + 26], 200, 340,
           fill=(46, 60, 116), width=6)
-    # 抽绳
     for sx in (-1, 1):
         d.line([a.cx + sx * 9, a.neck_y + 8, a.cx + sx * 11, a.neck_y + 34],
                fill=(244, 244, 250), width=3)
         d.ellipse([a.cx + sx * 11 - 3, a.neck_y + 32, a.cx + sx * 11 + 3, a.neck_y + 38],
                   fill=(244, 244, 250))
-    # 口袋
     d.arc([a.cx - 26, a.feet_y - 44, a.cx + 26, a.feet_y - 8], 200, 340,
           fill=(60, 78, 140), width=4)
 
@@ -348,11 +312,9 @@ def _draw_vest(cell: Image.Image, a: Anchors, t: float):
 
 
 def _draw_backpack(cell: Image.Image, a: Anchors, t: float):
-    """背包：主体在身后（behind 层），带子画在身前。"""
     pass
 
 
-# -- 身后层 --------------------------------------------------------
 def _draw_wings(d, a: Anchors, t: float):
     flap = math.sin(t * 3.2) * 7
     for sx in (-1, 1):
@@ -380,7 +342,6 @@ def _draw_pack_straps(d, a: Anchors, t: float):
                fill=(46, 62, 88), width=6)
 
 
-# ---------------------------------------------------------------- 单品表
 ITEMS: list[Item] = [
     Item("none", "不戴", "head"),
     Item("straw", "草帽", "head", tint=(226, 190, 108)),
@@ -413,13 +374,11 @@ PAINT = {"hoodie": _draw_hoodie, "vest": _draw_vest}
 
 
 def apply_wear(cell: Image.Image, a: Anchors, wear: dict[str, str], t: float) -> Image.Image:
-    """wear = {slot: item_id}；返回叠加了衣物的新帧。"""
     ids = {i for i in wear.values() if i and i != "none"}
     if not ids:
         return cell
     out = cell.copy()
 
-    # 1. 身后层
     behind = [i for i in ids if i in BEHIND_DRAW]
     if behind:
         layer = Image.new("RGBA", out.size, (0, 0, 0, 0))
@@ -428,12 +387,10 @@ def apply_wear(cell: Image.Image, a: Anchors, wear: dict[str, str], t: float) ->
             BEHIND_DRAW[i](d, a, t)
         out = Image.alpha_composite(layer, out)
 
-    # 2. 上身涂色（要落在描边内侧）
     for i in ids:
         if i in PAINT:
             PAINT[i](out, a, t)
 
-    # 3. 身前小件
     front = [i for i in ids if i in FRONT_DRAW]
     if front:
         layer = Image.new("RGBA", out.size, (0, 0, 0, 0))
@@ -452,7 +409,6 @@ def apply_wear(cell: Image.Image, a: Anchors, wear: dict[str, str], t: float) ->
     return out
 
 
-# ---------------------------------------------------------------- 自检
 def _demo(path: str = "wear.png"):
     sh = sp.SpriteSheet()
     demo_sets = [

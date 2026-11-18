@@ -1,7 +1,3 @@
-"""投喂系统自测：右键 → 投喂 → 选食物 → 下落/咀嚼/爱心 → 数值与持久化。
-
-用法： python tools/test_feed.py
-"""
 from __future__ import annotations
 
 import ctypes
@@ -87,7 +83,6 @@ def main() -> int:
     log(f"start satiety={pet.stats['satiety']:.1f} weight={pet.stats['weight']:.2f} "
         f"fed={pet.stats['fed']}")
 
-    # 右键 → 投喂（第 4 项，index 3）
     cur(pet.x + sprite.W / 2, pet.y + sprite.GROUND - 90)
     post(pet.win.hwnd, W.WM_RBUTTONUP)
     h.step(0.35)
@@ -101,7 +96,7 @@ def main() -> int:
     h.shot("panel")
 
     panel = pet.feed_panel
-    px = panel.win.x + panel.PAD + 2 * panel.CELL + panel.CELL / 2      # 蛋糕
+    px = panel.win.x + panel.PAD + 2 * panel.CELL + panel.CELL / 2
     py = panel.win.y + panel.PAD + panel.BAR_H + 20
     before = dict(pet.stats)
     h.click(panel.win.hwnd, px, py)
@@ -112,7 +107,6 @@ def main() -> int:
     assert pet.feed_is_open is False, "投喂后面板没关闭"
     h.shot("fall")
 
-    # 落到嘴边
     while pet.feeding and pet.feeding["phase"] == "fall":
         h.step(0.01)
     h.shot("eat")
@@ -128,7 +122,6 @@ def main() -> int:
     assert after["fed"] == before["fed"] + 1, "fed 没加"
     h.shot("after")
 
-    # 吃饱了会拒绝，且面板要留着
     pet.stats["satiety"] = 95.0
     pet.open_feed()
     h.step(0.25)
@@ -143,13 +136,11 @@ def main() -> int:
     h.shot("refuse")
     pet.close_feed()
 
-    # 投喂面板刷新（饱食度条）
     pet.open_feed()
     h.step(0.25)
     h.shot("panel_after")
     pet.close_feed()
 
-    # 体重影响体型
     pet.stats["weight"] = 78.0
     h.step(0.2)
     log(f"scale at weight 78 = {pet._body_scale():.3f}")

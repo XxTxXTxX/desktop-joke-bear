@@ -1,9 +1,3 @@
-"""交互自测：走真实的 Win32 消息通路（PostMessage + SetCursorPos），
-验证 右键菜单 / 拖拽 / 抛掷 / 重力落地 / 点击小跳 是否正常。
-
-用法：  python tools/selftest.py
-输出：  preview/t_*.png 截图 + preview/selftest.log 事件日志
-"""
 from __future__ import annotations
 
 import ctypes
@@ -98,7 +92,6 @@ def main() -> int:
     h.run_for(0.8)
     h.shot("idle")
 
-    # ---------- 1. 右键菜单 ----------
     log("--- test: right-click menu ---")
     set_cursor(pet.x + sprite.W / 2, pet.y + sprite.GROUND - 90)
     post(hwnd, W.WM_RBUTTONUP)
@@ -112,7 +105,6 @@ def main() -> int:
         log(f"menu hover index={pet.menu.hover}")
     h.shot("menu")
 
-    # 点菜单第一项「说句话」
     if ok_menu:
         mx = pet.menu.win.x + pet.menu.W / 2
         my = pet.menu.win.y + pet.menu.PAD + pet.menu.ROW / 2
@@ -125,7 +117,6 @@ def main() -> int:
         log(f"after menu click: open={pet.menu_open} speech={pet.brain.speech!r}")
         h.shot("after_menu")
 
-    # ---------- 2. 拖拽 + 抛掷 ----------
     log("--- test: drag & throw ---")
     bx = pet.x + sprite.W / 2
     by = pet.y + sprite.GROUND - 80
@@ -142,7 +133,6 @@ def main() -> int:
     post(hwnd, W.WM_LBUTTONUP, 0, lparam(150, 200))
     log("released")
 
-    # 飞行中
     h.until(lambda: not pet.on_ground, 1.0)
     h.run_for(0.10)
     h.shot("airborne")
@@ -151,7 +141,6 @@ def main() -> int:
     h.run_for(0.25)
     h.shot("landed")
 
-    # ---------- 3. 点击（小跳 + 台词） ----------
     log("--- test: click reaction ---")
     h.run_for(1.6)
     before = pet.brain.speech
@@ -163,7 +152,6 @@ def main() -> int:
     log(f"click speech={pet.brain.speech!r} airborne={not pet.on_ground}")
     h.shot("click")
 
-    # ---------- 4. 自由活动 20 秒，记录行为分布 ----------
     log("--- test: autonomous 20s ---")
     states = {}
     end = time.perf_counter() + 20

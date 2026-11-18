@@ -1,11 +1,3 @@
-"""添加提醒的小窗口：普通 Win32 弹出窗 + 标准 EDIT 控件。
-
-不用分层窗口的原因：`UpdateLayeredWindow` 不合成子控件，而中文输入必须靠真正的
-EDIT 控件（自带 IME、光标、选区、粘贴）。所以这里用普通窗口：背景、按钮、色块
-全部用 GDI 画，只有"打字"交给系统。
-
-交互：Enter = 添加，Esc = 取消，拖标题区域可移动。
-"""
 from __future__ import annotations
 
 import ctypes
@@ -17,7 +9,6 @@ from . import winlayer as W
 user32 = W.user32
 gdi32 = W.gdi32
 
-# ---------------------------------------------------------------- 常量
 WS_CHILD = 0x40000000
 WS_VISIBLE = 0x10000000
 WS_POPUP = 0x80000000
@@ -45,7 +36,7 @@ SW_HIDE = 0
 TRANSPARENT = 1
 
 CW, CH = 392, 300
-COL_BG = 0x00F6F2EC          # BGR
+COL_BG = 0x00F6F2EC
 COL_INK = 0x001A0C08
 COL_DIM = 0x006A5A4A
 COL_LINE = 0x00C2CFD9
@@ -54,7 +45,6 @@ COL_ON_INK = 0x000C5A8A
 COL_PRIMARY = 0x00057ECE
 FONT_NAME = "Microsoft YaHei"
 
-# ---------------------------------------------------------------- 版式
 MSG_BOX = (16, 38, CW - 16, 68)
 QUICK_Y = 78
 TIME_LABEL_Y = 106
@@ -71,7 +61,6 @@ TIMES = [("现在", ""), ("10分钟", "in:10m"), ("1小时", "in:1h"), ("20:00",
 REPEATS = [("不重复", ""), ("每天", "daily"), ("工作日", "weekday")]
 
 
-# ---------------------------------------------------------------- 结构体/原型
 class PAINTSTRUCT(ctypes.Structure):
     _fields_ = [("hdc", wt.HDC), ("fErase", wt.BOOL), ("rcPaint", wt.RECT),
                 ("fRestore", wt.BOOL), ("fIncUpdate", wt.BOOL),
@@ -84,7 +73,6 @@ gdi32.CreateSolidBrush.argtypes = [wt.COLORREF]
 gdi32.CreatePen.restype = wt.HPEN
 gdi32.CreatePen.argtypes = [ctypes.c_int, ctypes.c_int, wt.COLORREF]
 gdi32.CreateFontW.restype = wt.HFONT
-# 14 个参数：高 宽 角度 方向 粗细 + 8 个样式位 + 字体名
 gdi32.CreateFontW.argtypes = [ctypes.c_int] * 5 + [wt.DWORD] * 8 + [wt.LPCWSTR]
 gdi32.SelectObject.restype = wt.HGDIOBJ
 gdi32.SelectObject.argtypes = [wt.HDC, wt.HGDIOBJ]
@@ -114,7 +102,6 @@ user32.SetWindowPos.argtypes = [wt.HWND, wt.HWND, ctypes.c_int, ctypes.c_int,
 
 
 def _chips(items, y, x0=16, h=26, gap=8):
-    """从左到右排一组小按钮，返回 [(rect, label, value)]。"""
     out, x = [], x0
     for label, value in items:
         wide = any(ord(c) > 127 for c in label)
@@ -141,13 +128,12 @@ class ReminderEditor:
         self.hwnd = self.edit_msg = self.edit_time = self._font = None
         self._build()
 
-    # ------------------------------------------------------------ 建窗
     def _build(self):
         hinst = W.kernel32.GetModuleHandleW(None)
         cls = "BearReminderEditor"
         wc = W.WNDCLASSEXW()
         wc.cbSize = ctypes.sizeof(W.WNDCLASSEXW)
-        self._proc_ref = W.WNDPROC(self._proc)        # 必须持有引用
+        self._proc_ref = W.WNDPROC(self._proc)
         wc.lpfnWndProc = self._proc_ref
         wc.hInstance = hinst
         wc.hCursor = user32.LoadCursorW(None, ctypes.cast(32512, wt.LPCWSTR))
@@ -219,7 +205,6 @@ class ReminderEditor:
             traceback.print_exc()
         return user32.DefWindowProcW(hwnd, msg, wp, lp)
 
-    # ------------------------------------------------------------ 绘制
     def _paint(self, hwnd):
         ps = PAINTSTRUCT()
         hdc = user32.BeginPaint(hwnd, ctypes.byref(ps))
@@ -278,7 +263,6 @@ class ReminderEditor:
         finally:
             user32.EndPaint(hwnd, ctypes.byref(ps))
 
-    # ------------------------------------------------------------ 交互
     def _hit(self, x, y):
         for group, kind in ((self.quick, "quick"), (self.times, "time"), (self.reps, "rep")):
             for i, (r, _l, _v) in enumerate(group):
@@ -315,7 +299,7 @@ class ReminderEditor:
         user32.UpdateWindow(self.hwnd)
 
     def _set_text(self, edit, s):
-        buf = ctypes.create_unicode_buffer(s)      # 保持引用直到调用返回
+        buf = ctypes.create_unicode_buffer(s)
         user32.SendMessageW(edit, WM_SETTEXT, 0, ctypes.cast(buf, ctypes.c_void_p).value)
 
     def _get(self, edit) -> str:
@@ -324,7 +308,6 @@ class ReminderEditor:
         user32.SendMessageW(edit, WM_GETTEXT, n + 1, ctypes.cast(buf, ctypes.c_void_p).value)
         return buf.value.strip()
 
-    # ------------------------------------------------------------ 提交
     def commit(self):
         text = self._get(self.edit_msg)
         if not text:
@@ -345,7 +328,6 @@ class ReminderEditor:
             self.pet.remind_panel.refresh()
         self.close()
 
-    # ------------------------------------------------------------ 显示
     def open(self, near_x: float, near_y: float):
         left, top, right, bottom = W.work_area(self.pet.win.hwnd)
         x = int(max(left + 8, min(right - CW - 8, near_x)))

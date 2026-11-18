@@ -1,7 +1,3 @@
-"""本地定时提醒自测：自己加提醒 → 按本机时钟到点触发。
-
-用法： python tools/test_local_reminder.py
-"""
 from __future__ import annotations
 
 import os
@@ -12,9 +8,9 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(BASE, ".deps"))
 sys.path.insert(0, BASE)
 
-from PIL import ImageGrab  # noqa: E402
+from PIL import ImageGrab
 
-from bearpet import app, reminder  # noqa: E402
+from bearpet import app, reminder
 
 OUT = os.path.join(BASE, "preview")
 LOG = os.path.join(OUT, "local_reminder.log")
@@ -31,7 +27,7 @@ def main() -> int:
     pet = app.BearPet()
     pet.store.items = []
     pet.store.quiet_on = False
-    pet.store.quiet = ("00:00", "00:00")          # 测试不受静音影响
+    pet.store.quiet = ("00:00", "00:00")
     last = time.perf_counter()
 
     def pump(sec):
@@ -45,13 +41,12 @@ def main() -> int:
             pet.draw()
             time.sleep(0.006)
 
-    # ---------- 1. 打开编辑器，加一条 10 分钟后的 ----------
     pet.open_editor()
     pump(0.4)
     e = pet.editor
     assert e.alive, "编辑器没打开"
     e._set_text(e.edit_msg, "记得喝水")
-    e.sel_time = 1                     # 10 分钟
+    e.sel_time = 1
     t0 = time.time()
     e.commit()
     pump(0.2)
@@ -62,7 +57,6 @@ def main() -> int:
     assert abs((due - t0) - 600) < 5, f"10 分钟档位算错了：{due - t0:.0f}s"
     assert not e.alive, "提交后编辑器应关闭"
 
-    # ---------- 2. 自定义 HH:MM ----------
     pet.open_editor()
     pump(0.3)
     e._set_text(e.edit_msg, "晚上该睡觉了")
@@ -74,7 +68,6 @@ def main() -> int:
     log(f"custom 23:59 -> {lastone.due_str()} repeat={lastone.repeat}")
     assert lt.tm_hour == 23 and lt.tm_min == 59, "自定义时间没生效"
 
-    # ---------- 3. 每天重复 ----------
     pet.open_editor()
     pump(0.3)
     e._set_text(e.edit_msg, "每天喝水")
@@ -86,7 +79,6 @@ def main() -> int:
     assert daily, "daily 没记上"
     log(f"daily ok: {daily[0].due_str()}")
 
-    # ---------- 4. 到点触发（用 in:3s 通过自定义框）----------
     pet.open_editor()
     pump(0.3)
     e._set_text(e.edit_msg, "三秒后提醒我")
@@ -100,7 +92,6 @@ def main() -> int:
     assert pet.brain.speech == "三秒后提醒我", "到点没触发"
     assert all(r.text != "三秒后提醒我" for r in pet.store.items), "一次性提醒触发后应出队"
 
-    # ---------- 5. 面板：添加按钮 / 删除 ----------
     pet.open_reminders()
     pump(0.3)
     panel = pet.remind_panel
@@ -120,7 +111,6 @@ def main() -> int:
         log(f"delete: {before} -> {len(pet.store.items)}")
         assert len(pet.store.items) == before - 1, "删除没生效"
 
-    # 添加按钮 → 打开编辑器
     ax0, ay0, ax1, ay1 = panel._add_box()
     panel._on_up(panel.win.x + (ax0 + ax1) / 2, panel.win.y + (ay0 + ay1) / 2)
     pump(0.3)

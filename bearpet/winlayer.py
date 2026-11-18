@@ -1,12 +1,3 @@
-"""Win32 分层窗口封装 —— 纯 ctypes，无第三方依赖。
-
-关键点：
-  * WS_EX_LAYERED + UpdateLayeredWindow(ULW_ALPHA) → 真正的逐像素 alpha，
-    熊的轮廓外不会被抠出彩色边，也不需要 chroma-key。
-  * 透明像素天然穿透鼠标：桌面图标照样能点。
-  * WS_EX_TOOLWINDOW：不占任务栏、不进 Alt+Tab。
-  * WS_EX_NOACTIVATE：点熊不会抢走当前窗口的焦点。
-"""
 from __future__ import annotations
 
 import ctypes
@@ -19,7 +10,6 @@ kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 LRESULT = ctypes.c_ssize_t
 WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM)
 
-# ---- 常量 -----------------------------------------------------------
 WS_POPUP = 0x80000000
 WS_EX_LAYERED = 0x00080000
 WS_EX_TOOLWINDOW = 0x00000080
@@ -65,7 +55,6 @@ SW_SHOWNA = 8
 MONITOR_DEFAULTTONEAREST = 2
 
 
-# ---- 结构体 ---------------------------------------------------------
 class WNDCLASSEXW(ctypes.Structure):
     _fields_ = [
         ("cbSize", wt.UINT), ("style", wt.UINT), ("lpfnWndProc", WNDPROC),
@@ -107,7 +96,6 @@ class MONITORINFO(ctypes.Structure):
                 ("rcWork", wt.RECT), ("dwFlags", wt.DWORD)]
 
 
-# ---- 原型 -----------------------------------------------------------
 user32.DefWindowProcW.restype = LRESULT
 user32.DefWindowProcW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
 user32.RegisterClassExW.restype = wt.ATOM
@@ -180,7 +168,6 @@ def left_button_down() -> bool:
 
 
 def work_area(hwnd: int) -> tuple[int, int, int, int]:
-    """返回窗口所在显示器的可用工作区 (left, top, right, bottom)。"""
     mi = MONITORINFO()
     mi.cbSize = ctypes.sizeof(MONITORINFO)
     hmon = user32.MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)
@@ -191,7 +178,6 @@ def work_area(hwnd: int) -> tuple[int, int, int, int]:
 
 
 class LayeredWindow:
-    """一块逐像素透明的独立窗口，内容由 PIL 图像逐帧推送。"""
 
     _class_seq = 0
 
@@ -203,7 +189,6 @@ class LayeredWindow:
         self.y = -10000
         self.alive = True
         self._shown = False
-        # 主窗口第一次 blit 就该显示；弹层（菜单/面板）自己调 show()
         self._want_visible = bool(auto_show)
         self._dib_w = 0
         self._dib_h = 0
@@ -213,12 +198,11 @@ class LayeredWindow:
         self._old_bmp = None
         self._screen_dc = None
 
-        # 回调
-        self.on_left_down = None      # (sx, sy) -> None
-        self.on_left_up = None        # (sx, sy) -> None
-        self.on_move = None           # (sx, sy) -> None
-        self.on_right_up = None       # (sx, sy) -> None
-        self.on_double_click = None   # (sx, sy) -> None
+        self.on_left_down = None
+        self.on_left_up = None
+        self.on_move = None
+        self.on_right_up = None
+        self.on_double_click = None
 
         LayeredWindow._class_seq += 1
         self._cls_name = f"BearLayeredWnd_{LayeredWindow._class_seq}"
@@ -234,7 +218,7 @@ class LayeredWindow:
         wc.lpszClassName = self._cls_name
         if not user32.RegisterClassExW(ctypes.byref(wc)):
             err = ctypes.get_last_error()
-            if err != 1410:  # ERROR_CLASS_ALREADY_EXISTS
+            if err != 1410:
                 raise ctypes.WinError(err)
 
         ex = WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST
@@ -249,7 +233,6 @@ class LayeredWindow:
         if not self.hwnd:
             raise ctypes.WinError(ctypes.get_last_error())
 
-    # ---- 消息 ------------------------------------------------------
     def _wndproc(self, hwnd, msg, wparam, lparam):
         try:
             if msg == WM_DESTROY:
@@ -288,13 +271,12 @@ class LayeredWindow:
                 if self.on_move:
                     self.on_move(*cursor_pos())
                 return 0
-        except Exception:  # 回调异常绝不能让消息循环炸掉
+        except Exception:
             import traceback
             traceback.print_exc()
         return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def pump(self) -> bool:
-        """处理排队消息；收到 WM_QUIT 返回 False。"""
         msg = MSG()
         while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, PM_REMOVE):
             if msg.message == WM_QUIT:
@@ -304,7 +286,6 @@ class LayeredWindow:
             user32.DispatchMessageW(ctypes.byref(msg))
         return True
 
-    # ---- 绘制 ------------------------------------------------------
     def _ensure_dib(self, w: int, h: int):
         if self._dib_w == w and self._dib_h == h:
             return
@@ -344,7 +325,6 @@ class LayeredWindow:
         self._dib_w = self._dib_h = 0
 
     def blit(self, img, x: int | None = None, y: int | None = None):
-        """把 RGBA 图像推到屏幕上（位置可直接更新，等于移动+重绘）。"""
         w, h = img.size
         self._ensure_dib(w, h)
         data = img.tobytes("raw", "BGRA")
@@ -363,9 +343,6 @@ class LayeredWindow:
         ):
             raise ctypes.WinError(ctypes.get_last_error())
         if self._want_visible and not self._shown:
-            # WS_POPUP 默认不可见；UpdateLayeredWindow 只负责内容与位置。
-            # 只有"调用方明确要求显示"时才自动 ShowWindow —— 否则 hide() 之后
-            # 任何一次 blit（比如面板自己重绘）都会把它重新弹出来。
             user32.ShowWindow(self.hwnd, SW_SHOWNA)
             user32.SetWindowPos(self.hwnd, HWND_TOPMOST, self.x, self.y, 0, 0,
                                 SWP_NOSIZE | SWP_NOACTIVATE)

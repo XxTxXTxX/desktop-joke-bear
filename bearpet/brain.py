@@ -1,4 +1,3 @@
-"""行为状态机：决定熊此刻在干什么、什么时候叹气、什么时候想睡。"""
 from __future__ import annotations
 
 import math
@@ -14,32 +13,28 @@ class Brain:
         self.rng = random.Random(seed)
 
         self.state = "idle"
-        self.t = 0.0                 # 当前状态已持续时间
-        self.dur = 2.4               # 当前状态计划时长
-        self.dir = 1                 # 行走方向 -1/+1
-        self.speed = 0.0             # px/s
-        self.energy = 0.72           # 0..1，越低越想躺
-        self.paused = False          # 被抓/掉落时暂停自主行为
+        self.t = 0.0
+        self.dur = 2.4
+        self.dir = 1
+        self.speed = 0.0
+        self.energy = 0.72
+        self.paused = False
 
-        # 眨眼
         self.blink = 1.0
         self._blink_t = -1.0
         self._blink_next = self.rng.uniform(1.5, 4.0)
 
-        # 说话
         self.speech: str | None = None
         self.speech_age = 0.0
         self.speech_dur = 0.0
-        self.speech_priority = False      # True = 提醒等要紧的话，别被随机台词顶掉
+        self.speech_priority = False
         self._speech_next = self.rng.uniform(4.0, 9.0)
         self._recent: list[str] = []
 
-        # 夸主人：闲下来每隔一两分钟夸一句
         self._praise_next = self.rng.uniform(12.0, 30.0)
 
         self._enter("idle")
 
-    # ------------------------------------------------------------ 台词
     def say(self, text: str, dur: float | None = None, priority: bool = False):
         self.speech = text
         self.speech_age = 0.0
@@ -48,7 +43,7 @@ class Brain:
 
     def say_rand(self, pool: list[str], dur: float | None = None):
         if self.speech and self.speech_priority:
-            return                        # 正在说要紧的话，随机台词排队等下次
+            return
         if not pool:
             return
         avail = [x for x in pool if x not in self._recent] or pool
@@ -64,9 +59,7 @@ class Brain:
         a_out = min(1.0, (self.speech_dur - self.speech_age) / 0.35)
         return max(0.0, min(a_in, a_out))
 
-    # ------------------------------------------------------------ 主循环
     def tick(self, dt: float):
-        # 气泡计时始终走
         if self.speech:
             self.speech_age += dt
             if self.speech_age >= self.speech_dur:
@@ -87,7 +80,6 @@ class Brain:
         elif self.state in ("dizzy", "hop") and self.t >= self.dur:
             self._enter("idle")
 
-    # ------------------------------------------------------------ 内部
     def _energy_tick(self, dt: float):
         drain = {"walk": 0.011, "idle": 0.0045, "sit": -0.052, "sigh": 0.02}.get(self.state, 0.0)
         self.energy = max(0.0, min(1.0, self.energy - drain * dt))
@@ -116,12 +108,11 @@ class Brain:
             self._speech_next = self.rng.uniform(9.0, 26.0)
 
     def _praise_tick(self, dt: float):
-        """闲下来就夸主人一句（比自言自语稀疏，气泡停留也更久）。"""
         self._praise_next -= dt
         if self._praise_next > 0.0:
             return
         if self.speech or self.state in ("sleep", "dizzy"):
-            self._praise_next = self.rng.uniform(8.0, 15.0)   # 正在说/在睡，等会儿再夸
+            self._praise_next = self.rng.uniform(8.0, 15.0)
             return
         self._praise_next = self.rng.uniform(45.0, 95.0)
         self.say_rand(lines.COMPLIMENT_LINES, 5.6)
@@ -134,15 +125,13 @@ class Brain:
         elif self.state == "sit":
             opts = [("idle", 0.36), ("sleep", 0.20), ("walk", 0.32), ("sigh", 0.12)]
         elif self.state == "sleep":
-            # 睡醒先站一会儿，然后该干嘛干嘛
             self.say_rand(lines.WAKE_LINES, 2.2)
             opts = [("idle", 0.50), ("walk", 0.24), ("sit", 0.16), ("sigh", 0.10)]
         elif self.state == "sigh":
             opts = [("idle", 0.56), ("walk", 0.26), ("sit", 0.18)]
-        else:  # idle
+        else:
             opts = [("walk", 0.44), ("idle", 0.16), ("sit", 0.18), ("sigh", 0.14), ("hop", 0.08)]
 
-        # 精力越高越不想睡，越困越容易就地睡过去
         if e > 0.60:
             sleep_k = 0.10
         elif e > 0.38:
@@ -189,7 +178,6 @@ class Brain:
             self.speed = 0.0
         return state
 
-    # ------------------------------------------------------------ 外部事件
     def force(self, state: str):
         self._enter(state)
 
