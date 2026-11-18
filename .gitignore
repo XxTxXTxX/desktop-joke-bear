@@ -1,0 +1,16 @@
+# 运行期状态，绝不能进仓库
+.bear.json
+.reminders.json
+.remote_state.json
+.bear.pid
+relay/token.txt
+relay/messages.jsonl
+
+# 依赖与缓存
+.deps/
+__pycache__/
+*.pyc
+
+# 预览图可以留，截图临时文件不留
+preview/debug.log
+*.log
