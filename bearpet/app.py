@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 from . import (art, editor, food, fx, garment, lines, outfit as omod, remind_ui, reminder,
                remote, size as sizemod, sprite, wardrobe, winlayer)
 from .brain import Brain
+from . import paths
 
 GRAVITY = 2300.0       # px/s²
 MAX_FALL = 3000.0      # 终端速度
@@ -18,9 +19,10 @@ HARD_LAND = 720.0      # 落地速度超过这个值就摔晕
 FPS = 45
 BUBBLE_BOTTOM = 116.0  # 气泡尾巴尖的位置（窗口坐标）
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIG_PATH = os.path.join(_BASE_DIR, ".bear.json")
-REMINDER_PATH = os.path.join(_BASE_DIR, ".reminders.json")
-REMOTE_STATE_PATH = os.path.join(_BASE_DIR, ".remote_state.json")
+_DATA_DIR = paths.data_dir()
+CONFIG_PATH = os.path.join(_DATA_DIR, ".bear.json")
+REMINDER_PATH = os.path.join(_DATA_DIR, ".reminders.json")
+REMOTE_STATE_PATH = os.path.join(_DATA_DIR, ".remote_state.json")
 
 _DEBUG = os.environ.get("BEAR_DEBUG") == "1"
 _LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -487,9 +489,29 @@ class BearPet:
     def _chime(self):
         def go():
             try:
-                import winsound
-                for f, d in ((988, 90), (1319, 130)):
-                    winsound.Beep(f, d)
+                if os.name == "nt":
+                    import winsound
+                    for f, d in ((988, 90), (1319, 130)):
+                        winsound.Beep(f, d)
+                    return
+                import struct
+                import subprocess
+                import tempfile
+                import wave
+                path = os.path.join(tempfile.gettempdir(), "bearpet_chime.wav")
+                if not os.path.exists(path):
+                    rate = 22050
+                    with wave.open(path, "wb") as w:
+                        w.setnchannels(1)
+                        w.setsampwidth(2)
+                        w.setframerate(rate)
+                        frames = bytearray()
+                        for freq, dur in ((988, 0.09), (0, 0.02), (1319, 0.13)):
+                            for i in range(int(rate * dur)):
+                                v = int(12000 * math.sin(2 * math.pi * freq * i / rate))
+                                frames.extend(struct.pack("<h", v))
+                        w.writeframes(bytes(frames))
+                subprocess.run(["afplay", path], check=False, timeout=3)
             except Exception:
                 pass
         threading.Thread(target=go, daemon=True).start()
@@ -804,6 +826,9 @@ class BearPet:
 
     # ------------------------------------------------------------ 主循环
     def run(self):
+        if getattr(winlayer, "NATIVE_RUN_LOOP", False):
+            winlayer.run_forever(self)
+            return
         last = time.perf_counter()
         budget = 1.0 / FPS
         while self.running and self.win.alive:

@@ -191,15 +191,40 @@ epeat: daily|weekday；
 
 ## 快速开始
 
+**原生可执行程序**（自带 Python，双击即可，不需要装 Python）：
+
+| 系统 | 生成方式 | 产物 |
+|---|---|---|
+| Windows | 双击 `build_windows.bat`（需在 Windows 上运行） | `自嘲熊.exe` |
+| macOS | `./build_mac.sh` | `自嘲熊.app` |
+
+两个构建脚本用的是同一份源码，PyInstaller 会把 Python、Pillow、PyObjC 和图集
+全部打进产物；改动源码后重新构建即可。exe 无法在 macOS 上交叉编译，所以
+Windows 版请在 Windows 机器上跑一次 `build_windows.bat`。
+
+Windows：
+
 ```
 双击  启动自嘲熊.bat        （或 启动自嘲熊.vbs，完全无控制台）
 双击  关闭自嘲熊.bat        （或右键熊 → 退出）
 ```
 
-命令行：`python main.py`
+macOS（推荐 .app）：
 
-依赖：Pillow，已装在项目内的 `.deps`，无需系统 pip。
-重装：`pip install --target .deps pillow`。
+```
+./build_mac.sh        # 生成自带 Python 的 自嘲熊.app（约 80 MB）
+双击  自嘲熊.app      # 可拖到「应用程序」，状态存在 ~/Library/Application Support/自嘲熊
+右键熊 → 退出          # 或用 关闭自嘲熊.command
+```
+
+也可以不打包，直接 `python3 main.py` 或双击 `启动自嘲熊.command`。
+
+命令行：Windows 用 `python main.py`，macOS 用 `python3 main.py`。
+
+依赖：Pillow 已装在项目内的 `.deps`，无需系统 pip；macOS 还需要 PyObjC
+（`AppKit` / `Cocoa` / `Quartz`），也已放进 `.deps`。
+换机器重装：`pip install --target .deps pillow pyobjc-framework-cocoa`。
+两个后端的公开 API 完全一致，换装/投喂/提醒/菜单等所有功能在两端表现相同。
 
 ## 它会做什么
 
@@ -238,8 +263,19 @@ epeat: daily|weekday；
 
 ```
 desktop-bear/
-├─ main.py                 入口（单实例互斥体 + 依赖路径注入）
+├─ build_windows.bat       Windows 打包脚本 → 自嘲熊.exe
+├─ build_mac.sh            macOS 打包脚本 → 自嘲熊.app（自带 Python）
+├─ 启动自嘲熊.py           通用启动器（未打包时共用）
+├─ 自嘲熊.app              macOS 应用包（make_app.sh 生成）
+├─ main.py                 入口（平台单实例锁 + 依赖路径注入）
 ├─ bearpet/
+│  ├─ winlayer.py          窗口后端分发（Windows / macOS）
+│  ├─ winlayer_win.py      Win32 分层窗口后端
+│  ├─ maclayer.py          macOS AppKit 透明窗口后端
+│  ├─ editor.py            提醒编辑器分发
+│  ├─ editor_win.py        Win32 EDIT + GDI 版编辑器
+│  ├─ editor_mac.py        macOS NSTextField 版编辑器
+│  ├─ paths.py             运行期可写目录（macOS → Application Support）
 │  ├─ sprite.py            Petdex 图集读取/切格/播放（主渲染路径）
 │  ├─ outfit.py            配色：调色板角色化重映射 + 6 套预设
 │  ├─ garment.py           衣物：每帧锚点（含眼睛实测）+ 12 件可穿戴单品
