@@ -199,8 +199,20 @@ epeat: daily|weekday；
 | macOS | `./build_mac.sh` | `自嘲熊.app` |
 
 两个构建脚本用的是同一份源码，PyInstaller 会把 Python、Pillow、PyObjC 和图集
-全部打进产物；改动源码后重新构建即可。exe 无法在 macOS 上交叉编译，所以
-Windows 版请在 Windows 机器上跑一次 `build_windows.bat`。
+全部打进产物。exe 无法在 macOS 上交叉编译，所以 Windows 版请在 Windows 机器上
+跑一次 `build_windows.bat`，生成的 `自嘲熊.exe` 可直接双击使用。
+
+### Windows 版自动更新
+
+`自嘲熊.exe` 是引导器：首次运行把内置的初始代码复制到
+`%LOCALAPPDATA%\DeskBear\app`，之后每次启动都会查询本仓库 `main` 分支的最新提交；
+发现新提交就下载源码 zip 并覆盖上述目录，然后才启动熊。所以你这边 push 代码后，
+用户下次双击 exe 就自动用上新版本，不需要重新打包 exe。
+
+- 更新只替换 `main.py` / `bearpet/` / `assets/`，不动配置和用户数据。
+- 网络失败时静默使用本地版本，离线照常运行；记录写在 `app\update.log`。
+- 设环境变量 `BEAR_NO_UPDATE=1` 可临时关闭自动更新。
+- 只有改了 `bootstrap.py` 或依赖时才需要重新构建 exe。
 
 Windows：
 
