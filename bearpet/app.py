@@ -8,7 +8,8 @@ import time
 from PIL import Image, ImageDraw, ImageFont
 
 from . import (art, chat, chat_ui, editor, food, fx, garment, lines, outfit as omod,
-               remind_ui, reminder, remote, size as sizemod, sprite, wardrobe, winlayer)
+               pixelfig, remind_ui, reminder, remote, size as sizemod, sprite, wardrobe,
+               winlayer)
 from .brain import Brain
 from . import paths
 
@@ -81,6 +82,11 @@ class BearPet:
         self.reminders_open = False
         self.editor = None
         self.editor_open = False
+        self.riding = False
+        self.climb = None
+        self._cursor_last = None
+        self._cursor_idle = 0.0
+        self._cursor_speed = 0.0
 
         self.chat = chat.ChatClient(self)
         self.chat_window = None
