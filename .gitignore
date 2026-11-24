@@ -3,6 +3,7 @@
 .reminders.json
 .remote_state.json
 .bear.pid
+.bear.lock
 relay/token.txt
 relay/messages.jsonl
 
@@ -11,6 +12,13 @@ relay/messages.jsonl
 __pycache__/
 *.pyc
 
+# PyInstaller 构建中间产物（产物 .app / .exe 保留）
+build/
+dist/
+*.spec
+
 # 预览图可以留，截图临时文件不留
 preview/debug.log
 *.log
+.DS_Store
+自嘲熊.app/

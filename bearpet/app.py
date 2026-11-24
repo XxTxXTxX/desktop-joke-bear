@@ -7,9 +7,10 @@ import time
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import (art, editor, food, fx, garment, lines, outfit as omod, pixelfig, remind_ui, reminder,
-               remote, size as sizemod, sprite, wardrobe, winlayer)
+from . import (art, chat, chat_ui, editor, food, fx, garment, lines, outfit as omod,
+               remind_ui, reminder, remote, size as sizemod, sprite, wardrobe, winlayer)
 from .brain import Brain
+from . import paths
 
 GRAVITY = 2300.0
 MAX_FALL = 3000.0
@@ -17,9 +18,10 @@ HARD_LAND = 720.0
 FPS = 45
 BUBBLE_BOTTOM = 116.0
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIG_PATH = os.path.join(_BASE_DIR, ".bear.json")
-REMINDER_PATH = os.path.join(_BASE_DIR, ".reminders.json")
-REMOTE_STATE_PATH = os.path.join(_BASE_DIR, ".remote_state.json")
+_DATA_DIR = paths.data_dir()
+CONFIG_PATH = os.path.join(_DATA_DIR, ".bear.json")
+REMINDER_PATH = os.path.join(_DATA_DIR, ".reminders.json")
+REMOTE_STATE_PATH = os.path.join(_DATA_DIR, ".remote_state.json")
 
 _DEBUG = os.environ.get("BEAR_DEBUG") == "1"
 _LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -79,11 +81,10 @@ class BearPet:
         self.reminders_open = False
         self.editor = None
         self.editor_open = False
-        self.riding = False
-        self.climb = None
-        self._cursor_last = None
-        self._cursor_idle = 0.0
-        self._cursor_speed = 0.0
+
+        self.chat = chat.ChatClient(self)
+        self.chat_window = None
+        self.chat_open = False
 
         self.stats: dict = self._load_stats()
         self.feed_panel = None
@@ -92,7 +93,7 @@ class BearPet:
         self._hungry_next = 40.0
 
         left, top, right, bottom = self.win.work_area()
-        self.y_ground = float(bottom - 1 - sprite.GROUND)
+        self.y_ground = float(winlayer.ground_bottom() - 1 - sprite.GROUND)
         self.x = float(right - 520)
         self.y = self.y_ground
         self.vx = 0.0
@@ -208,13 +209,19 @@ class BearPet:
         bear_l = left - 60
         bear_r = right - sprite.W + 60
         self.x = max(bear_l, min(bear_r, self.x))
-        self.y = max(top - 40.0, min(bottom - sprite.GROUND - 10.0, self.y))
+        bottom_limit = winlayer.ground_bottom() - sprite.GROUND - 10.0
+        min_y = getattr(winlayer, "MIN_Y", None)
+        if min_y is not None:
+            self.y = max(float(min_y), min(bottom_limit, self.y))
+        else:
+            self.y = max(top - 40.0, min(bottom_limit, self.y))
 
     def _open_menu(self):
         self.close_reminders()
         self.close_size()
         self.close_feed()
         self.close_wardrobe()
+        self.close_chat()
         if self.menu is None:
             self.menu = Menu(self)
         self.menu_open = True
@@ -362,10 +369,11 @@ class BearPet:
         try:
             import json
             tmp = CONFIG_PATH + ".tmp"
-            data = {"outfit": self.outfit.id, "wear": self.wear,
-                    "stats": self.stats, "size": self.size_scale,
-                    "quiet": list(self.quiet), "quiet_on": self.quiet_on,
-                    "remote": {"url": self.remote_url, "token": self.remote_token}}
+            data = self._load_config()
+            data.update({"outfit": self.outfit.id, "wear": self.wear,
+                         "stats": self.stats, "size": self.size_scale,
+                         "quiet": list(self.quiet), "quiet_on": self.quiet_on,
+                         "remote": {"url": self.remote_url, "token": self.remote_token}})
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False)
             os.replace(tmp, CONFIG_PATH)
@@ -374,6 +382,18 @@ class BearPet:
 
     def _save_outfit(self):
         self._save_config()
+
+    def set_llm_config(self, cfg: dict):
+        try:
+            import json
+            data = self._load_config()
+            data["llm"] = cfg
+            tmp = CONFIG_PATH + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            os.replace(tmp, CONFIG_PATH)
+        except Exception as exc:
+            _log(f"save llm config failed: {exc}")
 
     def reload_remote(self):
         cfg = self._load_config().get("remote") or {}
@@ -513,6 +533,23 @@ class BearPet:
         if self.editor:
             self.editor.close()
 
+    def open_chat(self):
+        self.close_menu()
+        self.close_wardrobe()
+        self.close_feed()
+        self.close_size()
+        self.close_reminders()
+        if self.chat_window is None:
+            self.chat_window = chat_ui.ChatWindow(self)
+        self.chat_open = True
+        self.brain.speech = None
+        self.chat_window.open(self.x + sprite.W / 2 - 200, self.y - 300)
+
+    def close_chat(self):
+        self.chat_open = False
+        if self.chat_window:
+            self.chat_window.close()
+
     def toggle_quiet(self):
         self.quiet_on = not self.quiet_on
         self.store.quiet = self.quiet if self.quiet_on else ("00:00", "00:00")
@@ -539,9 +576,29 @@ class BearPet:
     def _chime(self):
         def go():
             try:
-                import winsound
-                for f, d in ((988, 90), (1319, 130)):
-                    winsound.Beep(f, d)
+                if os.name == "nt":
+                    import winsound
+                    for f, d in ((988, 90), (1319, 130)):
+                        winsound.Beep(f, d)
+                    return
+                import struct
+                import subprocess
+                import tempfile
+                import wave
+                path = os.path.join(tempfile.gettempdir(), "bearpet_chime.wav")
+                if not os.path.exists(path):
+                    rate = 22050
+                    with wave.open(path, "wb") as w:
+                        w.setnchannels(1)
+                        w.setsampwidth(2)
+                        w.setframerate(rate)
+                        frames = bytearray()
+                        for freq, dur in ((988, 0.09), (0, 0.02), (1319, 0.13)):
+                            for i in range(int(rate * dur)):
+                                v = int(12000 * math.sin(2 * math.pi * freq * i / rate))
+                                frames.extend(struct.pack("<h", v))
+                        w.writeframes(bytes(frames))
+                subprocess.run(["afplay", path], check=False, timeout=3)
             except Exception:
                 pass
         threading.Thread(target=go, daemon=True).start()
@@ -595,6 +652,23 @@ class BearPet:
             if self.morph["t"] >= 1.0:
                 self._finish_morph()
 
+        if now - self._last_raise > 4.0 and not self.editor_open:
+            self.win.raise_topmost()
+            self._last_raise = now
+
+        if getattr(winlayer, "NO_TOP_LIMIT", False) and self.y < -sprite.H:
+            if getattr(self, "_offscreen_since", None) is None:
+                self._offscreen_since = now
+            elif now - self._offscreen_since > 1.5:
+                self.y = -40.0
+                self.vy = 0.0
+                self.on_ground = False
+                self.dragging = False
+                self.pressed = False
+                self._offscreen_since = None
+        else:
+            self._offscreen_since = None
+
         if self.dragging:
             return
 
@@ -609,15 +683,14 @@ class BearPet:
                 self.vy = -560.0
                 self.on_ground = False
 
-        if now - self._last_raise > 4.0 and not self.editor_open:
-            self.win.raise_topmost()
-            self._last_raise = now
-
     def _physics(self, dt: float):
         self.vy = min(MAX_FALL, self.vy + GRAVITY * dt)
         self.y += self.vy * dt
         self.x += self.vx * dt
         self.vx *= max(0.0, 1.0 - 1.4 * dt)
+        if self.y < -10000.0:
+            self.y = -10000.0
+            self.vy = 0.0
         self._recheck_ground()
         if self.y >= self.y_ground:
             impact = self.vy
@@ -629,8 +702,7 @@ class BearPet:
         self._check_walls()
 
     def _recheck_ground(self):
-        left, top, right, bottom = self.win.work_area()
-        self.y_ground = float(bottom - 1 - sprite.GROUND)
+        self.y_ground = float(winlayer.ground_bottom() - 1 - sprite.GROUND)
 
     def _check_walls(self):
         left, top, right, bottom = self.win.work_area()
@@ -842,7 +914,7 @@ class BearPet:
         self.close_size()
         self._save_config()
         if self.on_ground and not self.dragging:
-            self.y = float(self.win.work_area()[3] - 1 - sprite.GROUND)
+            self.y = float(winlayer.ground_bottom() - 1 - sprite.GROUND)
         self.brain.say(f"{int(round(self.size_scale * 100))}% 的我，也还是我", 2.4)
 
     def _shadow_factor(self) -> float:
@@ -853,6 +925,9 @@ class BearPet:
         return max(0.25, 1.0 - (self.y_ground - self.y) / 260.0)
 
     def run(self):
+        if getattr(winlayer, "NATIVE_RUN_LOOP", False):
+            winlayer.run_forever(self)
+            return
         last = time.perf_counter()
         budget = 1.0 / FPS
         while self.running and self.win.alive:
@@ -883,6 +958,8 @@ class BearPet:
             self.remind_panel.destroy()
         if self.editor:
             self.editor.destroy()
+        if self.chat_window:
+            self.chat_window.destroy()
         if self.remote is not None:
             self.remote.stop()
         self.win.destroy()
@@ -891,9 +968,9 @@ class BearPet:
 
 class Menu:
 
-    ITEMS = (("说句话", "say"), ("敲会儿键盘", "work"), ("躺一会儿", "sleep"),
-             ("投喂", "feed"), ("换装", "dress"), ("大小", "size"),
-             ("提醒", "remind"), ("退出", "quit"))
+    ITEMS = (("说句话", "say"), ("聊聊", "chat"), ("敲会儿键盘", "work"),
+             ("躺一会儿", "sleep"), ("投喂", "feed"), ("换装", "dress"),
+             ("大小", "size"), ("提醒", "remind"), ("退出", "quit"))
     W = 150
     ROW = 36
     PAD = 8
@@ -963,6 +1040,9 @@ class Menu:
         pet = self.pet
         if action == "say":
             pet.brain.say_rand(lines.IDLE_LINES, 3.6)
+        elif action == "chat":
+            pet.open_chat()
+            return
         elif action == "sleep":
             pet.brain.force("sleep")
         elif action == "work":
