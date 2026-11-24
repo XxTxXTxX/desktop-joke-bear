@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 import traceback
@@ -40,6 +41,7 @@ from AppKit import (
     NSEventTypeMouseMoved,
     NSBackingStoreBuffered,
     NSScreen,
+    NSScreenSaverWindowLevel,
     NSRunLoop,
     NSTrackingActiveAlways,
     NSTrackingArea,
@@ -57,10 +59,11 @@ from AppKit import (
     NSColor,
     NSView,
 )
-from Foundation import NSMakePoint, NSMakeRect, NSPointInRect
+from Foundation import NSMakePoint, NSMakeRect, NSPointInRect, NSUnionRect
 
 HWND_TOPMOST = -1
 NATIVE_RUN_LOOP = True
+MIN_Y = 0
 ON_EXIT = None
 
 
@@ -140,6 +143,21 @@ def _screen_for(hwnd):
     return best
 
 
+def debug_line(message: str) -> None:
+    try:
+        path = os.path.join(os.path.expanduser("~"), "Library",
+                            "Application Support", "自嘲熊", "drag.log")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"{time.perf_counter():.2f}  {message}\n")
+    except Exception:
+        pass
+
+
+def ground_bottom():
+    return work_area(None)[3]
+
+
 def cursor_pos() -> tuple[int, int]:
     p = NSEvent.mouseLocation()
     return int(round(p.x)), int(round(_global_top() - p.y))
@@ -216,22 +234,17 @@ class _BearView(NSView):
 
     def mouseDown_(self, event):
         owner = self._owner
-        owner._capturing = True
-        owner._install_monitor()
+        owner.begin_drag()
         sx, sy = cursor_pos()
         _safe(owner.on_left_down, sx, sy)
         if event.clickCount() >= 2:
             _safe(owner.on_double_click, sx, sy)
 
     def mouseUp_(self, event):
-        owner = self._owner
-        if not owner._capturing:
-            return
-        owner._capturing = False
-        owner._remove_monitor()
-        _safe(owner.on_left_up, *cursor_pos())
+        self._owner.end_drag()
 
     def mouseDragged_(self, event):
+        self._owner._last_move_at = time.monotonic()
         _safe(self._owner.on_move, *cursor_pos())
 
     def mouseMoved_(self, event):
@@ -254,6 +267,77 @@ class _BearWindow(NSPanel):
         return False
 
 
+class _CatchView(NSView):
+    def initWithOwner_(self, owner):
+        self = objc_super(_CatchView, self).initWithFrame_(NSMakeRect(0, 0, 1, 1))
+        self._owner = None
+        return self
+
+    def hitTest_(self, point):
+        return self
+
+    def mouseDragged_(self, event):
+        owner = self._owner
+        if owner is not None:
+            owner._last_move_at = time.monotonic()
+            _safe(owner.on_move, *cursor_pos())
+
+    def mouseMoved_(self, event):
+        self.mouseDragged_(event)
+
+    def mouseUp_(self, event):
+        owner = self._owner
+        if owner is not None:
+            owner.end_drag()
+
+    def rightMouseUp_(self, event):
+        owner = self._owner
+        if owner is not None:
+            owner._right_pressed = False
+            _safe(owner.on_right_up, *cursor_pos())
+
+
+class _CatchWindow(NSPanel):
+    def canBecomeKeyWindow(self):
+        return False
+
+    def canBecomeMainWindow(self):
+        return False
+
+
+class _DragCatcher:
+    def __init__(self):
+        rect = NSMakeRect(0, 0, 0, 0)
+        for screen in NSScreen.screens() or []:
+            rect = NSUnionRect(rect, screen.frame())
+        self.window = _CatchWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+            rect, NSWindowStyleMaskBorderless, NSBackingStoreBuffered, False)
+        self.window.setOpaque_(False)
+        self.window.setBackgroundColor_(NSColor.clearColor())
+        self.window.setLevel_(NSScreenSaverWindowLevel)
+        self.window.setIgnoresMouseEvents_(False)
+        self.view = _CatchView.alloc().initWithOwner_(None)
+        self.window.setContentView_(self.view)
+
+    def attach(self, owner):
+        self.view._owner = owner
+        self.window.orderFrontRegardless()
+
+    def detach(self):
+        self.view._owner = None
+        self.window.orderOut_(None)
+
+
+_CATCHER = None
+
+
+def _get_catcher():
+    global _CATCHER
+    if _CATCHER is None:
+        _CATCHER = _DragCatcher()
+    return _CATCHER
+
+
 class LayeredWindow:
     """一块逐像素透明的独立窗口，内容由 PIL 图像逐帧推送。"""
 
@@ -271,7 +355,10 @@ class LayeredWindow:
         self._pixel_size = None
         self._capturing = False
         self._right_pressed = False
+        self._press_at = 0.0
+        self._last_move_at = 0.0
         self._last_pos = None
+        self._debug_tick = 0
         self._monitor = None
         self._scale = 1.0
         try:
@@ -325,47 +412,32 @@ class LayeredWindow:
                 return True
         return False
 
-    def _install_monitor(self):
-        if self._monitor is not None:
+    def begin_drag(self):
+        if self._capturing:
             return
-        owner = self
+        self._capturing = True
+        self._press_at = time.monotonic()
+        self._last_move_at = 0.0
+        _get_catcher().attach(self)
 
-        def handler(event):
-            try:
-                t = event.type()
-                if t == NSEventTypeLeftMouseDragged:
-                    owner.mouse_dragged_external()
-                elif t == NSEventTypeLeftMouseUp:
-                    owner.mouse_up_external()
-                elif t == NSEventTypeMouseMoved:
-                    _safe(owner.on_move, *cursor_pos())
-            except Exception:
-                traceback.print_exc()
-            return event
+    def end_drag(self):
+        if not self._capturing:
+            return
+        self._capturing = False
+        _get_catcher().detach()
+        _safe(self.on_left_up, *cursor_pos())
 
-        try:
-            self._monitor = NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
-                _monitor_mask(), handler)
-        except Exception:
-            self._monitor = None
-
-    def _remove_monitor(self):
-        if self._monitor is not None:
-            try:
-                NSEvent.removeMonitor_(self._monitor)
-            except Exception:
-                pass
-            self._monitor = None
-
-    def mouse_dragged_external(self):
-        if self._capturing:
+    def poll_input(self):
+        if not self._capturing:
+            return
+        now = time.monotonic()
+        if now - self._press_at < 0.2:
+            return
+        if now - self._last_move_at > 0.04:
+            self._last_move_at = now
             _safe(self.on_move, *cursor_pos())
-
-    def mouse_up_external(self):
-        if self._capturing:
-            self._capturing = False
-            self._remove_monitor()
-            _safe(self.on_left_up, *cursor_pos())
+        if now - self._press_at > 15.0:
+            self.end_drag()
 
     # ---- 消息泵 -----------------------------------------------------
     def pump(self) -> bool:
@@ -403,7 +475,13 @@ class LayeredWindow:
         self._rep.bitmapData()[:] = premul
         self._view.setNeedsDisplay_(True)
 
+        if self.y < 400 and self._debug_tick % 10 == 0:
+            debug_line(f"y={self.y:.0f} capturing={self._capturing} "
+                       f"cocoa_frame={self.hwnd.frame().origin.y:.0f}")
+        self._debug_tick += 1
         px, py = self.x, _global_top() - self.y - h
+        wa_left, _wa_top, wa_right, _wa_bottom = work_area(self.hwnd)
+        px = max(wa_left - w + 60, min(px, wa_right - 60))
         target = (px, py)
         if self._last_pos != target:
             if self._shown:
@@ -440,7 +518,8 @@ class LayeredWindow:
         return work_area(self.hwnd)
 
     def destroy(self):
-        self._remove_monitor()
+        if self._capturing:
+            _get_catcher().detach()
         self._capturing = False
         win = self.hwnd
         if win is not None:
@@ -512,11 +591,15 @@ def run_forever(pet):
             _APP.terminate_(None)
             return
         try:
+            for w in tuple(_WINDOWS.values()):
+                w.poll_input()
             pet.update(dt)
             pet.draw()
         except Exception:
             traceback.print_exc()
-            pet.running = False
+            state["errors"] = state.get("errors", 0) + 1
+            if state["errors"] > 30:
+                pet.running = False
 
     target = _TickTarget.alloc().initWithCallback_(frame)
     timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(

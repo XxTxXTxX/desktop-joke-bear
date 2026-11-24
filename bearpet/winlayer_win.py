@@ -69,6 +69,13 @@ def set_on_exit(cb):
     pass
 
 
+MIN_Y = None
+
+
+def ground_bottom():
+    return work_area(None)[3]
+
+
 # ---- 结构体 ---------------------------------------------------------
 class WNDCLASSEXW(ctypes.Structure):
     _fields_ = [

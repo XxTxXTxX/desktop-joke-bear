@@ -238,6 +238,27 @@ macOS（推荐 .app）：
 换机器重装：`pip install --target .deps pillow pyobjc-framework-cocoa`。
 两个后端的公开 API 完全一致，换装/投喂/提醒/菜单等所有功能在两端表现相同。
 
+## 和大模型聊天
+
+右键 → **聊聊** 打开聊天窗，打字按 Enter 发送，熊会在桌面气泡里同步说话。
+用 OpenAI 兼容 API（DeepSeek / 通义 / OpenAI 等），不装任何额外依赖。
+
+配置写在 `.bear.json`：
+
+```json
+"llm": {
+  "base_url": "https://api.deepseek.com/v1",
+  "api_key": "sk-你的密钥",
+  "model": "deepseek-chat"
+}
+```
+
+对话历史和长期记忆存在 `.bear_memory.json`（不会上传）。模型可以在回复末尾用
+`<memory>要记住的事</memory>` 标记，熊会把它写进长期记忆，下次聊天自动带上——
+比如你说"我叫小明，养了只猫"，它会记住并在以后提起。
+
+想清空记忆：删掉 `.bear_memory.json` 重启即可。
+
 ## 它会做什么
 
 | 状态 | 表现 |
