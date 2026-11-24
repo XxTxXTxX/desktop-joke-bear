@@ -23,8 +23,8 @@ jobs:
 
       - name: Build exe
         run: |
-          python -m PyInstaller --noconfirm --onefile --windowed --name 自嘲熊 `
-            --paths .deps --hidden-import PIL --collect-submodules PIL `
+          python -m PyInstaller --noconfirm --onefile --windowed --runtime-tmpdir C:/DeskBear/runtime --name 自嘲熊 `
+            --paths .deps `
             --add-data "main.py;." `
             --add-data "bearpet;bearpet" `
             --add-data "assets;assets" `

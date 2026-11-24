@@ -95,11 +95,14 @@ user32.FillRect.argtypes = [wt.HDC, ctypes.POINTER(wt.RECT), wt.HBRUSH]
 user32.DrawTextW.argtypes = [wt.HDC, wt.LPCWSTR, ctypes.c_int,
                              ctypes.POINTER(wt.RECT), wt.UINT]
 user32.BeginPaint.restype = wt.HDC
-user32.BeginPaint.argtypes = [wt.HWND, ctypes.POINTER(PAINTSTRUCT)]
-user32.EndPaint.argtypes = [wt.HWND, ctypes.POINTER(PAINTSTRUCT)]
+# 用 c_void_p：chat_ui_win.py 也设置这两个函数的 argtypes，具体结构体
+# 会导致"谁后 import 谁生效"，另一个窗口的 WM_PAINT 就会抛 ArgumentError。
+user32.BeginPaint.argtypes = [wt.HWND, ctypes.c_void_p]
+user32.EndPaint.argtypes = [wt.HWND, ctypes.c_void_p]
 user32.InvalidateRect.argtypes = [wt.HWND, ctypes.POINTER(wt.RECT), wt.BOOL]
 user32.UpdateWindow.argtypes = [wt.HWND]
 user32.SetFocus.argtypes = [wt.HWND]
+user32.ScreenToClient.argtypes = [wt.HWND, ctypes.POINTER(wt.POINT)]
 user32.ShowWindow.argtypes = [wt.HWND, ctypes.c_int]
 user32.SetForegroundWindow.argtypes = [wt.HWND]
 user32.MessageBeep.argtypes = [wt.UINT]
@@ -211,8 +214,10 @@ class ReminderEditor:
                 self._click(x, y)
                 return 0
             if msg == W.WM_NCHITTEST:
-                y = ctypes.c_short((lp >> 16) & 0xFFFF).value
-                if y < 32:
+                pt = wt.POINT(ctypes.c_short(lp & 0xFFFF).value,
+                              ctypes.c_short((lp >> 16) & 0xFFFF).value)
+                user32.ScreenToClient(hwnd, ctypes.byref(pt))
+                if pt.y < 32:
                     return HTCAPTION
         except Exception:
             import traceback

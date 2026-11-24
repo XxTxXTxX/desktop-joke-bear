@@ -213,7 +213,14 @@ epeat: daily|weekday；
 
 两个构建脚本用的是同一份源码，PyInstaller 会把 Python、Pillow、PyObjC 和图集
 全部打进产物。exe 无法在 macOS 上交叉编译，所以 Windows 版请在 Windows 机器上
-跑一次 `build_windows.bat`，生成的 `自嘲熊.exe` 可直接双击使用。
+跑一次 `build_windows.bat`。脚本会把生成的 `自嘲熊.exe` 安装到 `C:\DeskBear\` 并在
+桌面创建快捷方式，双击快捷方式即可使用。
+
+> Windows 上请从 `C:\DeskBear\自嘲熊.exe` 启动，不要直接双击仓库目录里的 exe。
+> 若系统 TEMP/TMP 是 `C:\Users\ADMINI~1\AppData\Local\Temp` 这类 8.3 短路径，
+> PyInstaller 单文件版在某些目录下会因无法创建 `_MEI` 临时目录而报
+> "Could not create temporary directory!"。exe 已固定使用
+> `C:\DeskBear\runtime` 作为运行时目录，避开系统 TEMP。
 
 ### Windows 版自动更新
 
