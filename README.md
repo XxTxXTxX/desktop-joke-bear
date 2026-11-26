@@ -223,6 +223,18 @@ epeat: daily|weekday；
 > TEMP 下的 "Could not create temporary directory!" 报错。移动或复制时请把
 > 整个目录一起带走。
 
+### 换图标
+
+Windows 的图标是 `assets\icon.ico`（`assets\icon.png` 是同一张图的 PNG 版，
+方便 macOS / 预览用）。想换成自己的图标：
+
+1. 准备一个 `.ico` 文件，建议包含 256×256、48×48、32×32、16×16 几种尺寸；
+2. 覆盖 `assets\icon.ico`；
+3. 重新跑一次 `build_windows.bat`。
+
+只想改桌面快捷方式的图标、不想重新打包：右键快捷方式 → 属性 → 更改图标，
+选一个 `.ico` 即可。
+
 ### Windows 版自动更新
 
 `自嘲熊.exe` 是引导器：首次运行把内置的初始代码复制到

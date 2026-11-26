@@ -23,7 +23,7 @@ jobs:
 
       - name: Build app
         run: |
-          python -m PyInstaller --noconfirm --onedir --windowed --name 自嘲熊 `
+          python -m PyInstaller --noconfirm --onedir --windowed --icon "assets/icon.ico" --name 自嘲熊 `
             --paths .deps `
             --add-data "main.py;." `
             --add-data "bearpet;bearpet" `
