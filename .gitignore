@@ -22,3 +22,7 @@ preview/debug.log
 *.log
 .DS_Store
 自嘲熊.app/
+
+# Windows onedir 产物：exe 必须和 _internal 一起分发，本机运行用，不进仓库
+_internal/
+自嘲熊.exe

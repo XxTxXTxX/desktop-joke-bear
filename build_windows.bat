@@ -2,18 +2,24 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 python -m pip show pyinstaller >nul 2>nul || python -m pip install pyinstaller
+taskkill /IM "自嘲熊.exe" /F >nul 2>nul
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
-if not exist C:\DeskBear mkdir C:\DeskBear
-python -m PyInstaller --noconfirm --onefile --windowed --runtime-tmpdir C:/DeskBear/runtime --name 自嘲熊 ^
+python -m PyInstaller --noconfirm --onedir --windowed --name 自嘲熊 ^
   --paths .deps ^
   --add-data "main.py;." ^
   --add-data "bearpet;bearpet" ^
   --add-data "assets;assets" ^
   bootstrap.py
-copy /Y "dist\自嘲熊.exe" "自嘲熊.exe" >nul
-if not exist C:\DeskBear mkdir C:\DeskBear
-copy /Y "dist\自嘲熊.exe" "C:\DeskBear\自嘲熊.exe" >nul
-powershell -NoProfile -Command "$ws=New-Object -ComObject WScript.Shell; $sc=$ws.CreateShortcut([Environment]::GetFolderPath('Desktop')+'\自嘲熊.lnk'); $sc.TargetPath='C:\DeskBear\自嘲熊.exe'; $sc.WorkingDirectory='C:\DeskBear'; $sc.Save()"
-echo 已生成自嘲熊.exe，并安装到 C:\DeskBear（桌面已创建快捷方式）
+rem 安装到 C:\DeskBear\自嘲熊\（exe 与 _internal 必须同目录）
+if exist "C:\DeskBear\自嘲熊" rmdir /s /q "C:\DeskBear\自嘲熊"
+xcopy /E /I /Y "dist\自嘲熊" "C:\DeskBear\自嘲熊" >nul
+rem 仓库目录也同步一份，双击仓库里的自嘲熊.exe 可直接运行
+if exist "_internal" rmdir /s /q "_internal"
+xcopy /E /I /Y "dist\自嘲熊" "." >nul
+rem 清掉旧的单文件版和它的 runtime 目录
+if exist "C:\DeskBear\自嘲熊.exe" del /Q "C:\DeskBear\自嘲熊.exe"
+if exist "C:\DeskBear\runtime" rmdir /s /q "C:\DeskBear\runtime"
+powershell -NoProfile -Command "$ws=New-Object -ComObject WScript.Shell; $sc=$ws.CreateShortcut([Environment]::GetFolderPath('Desktop')+'\自嘲熊.lnk'); $sc.TargetPath='C:\DeskBear\自嘲熊\自嘲熊.exe'; $sc.WorkingDirectory='C:\DeskBear\自嘲熊'; $sc.Save()"
+echo 已生成 onedir 版本，并安装到 C:\DeskBear\自嘲熊（桌面快捷方式已更新）
 pause

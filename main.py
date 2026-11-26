@@ -60,8 +60,25 @@ def _single_instance() -> bool:
     return True
 
 
+def _activate_existing() -> None:
+    """已经有实例在跑时，把它的熊窗口提到最前，而不是静默退出。"""
+    try:
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        user32.FindWindowW.restype = ctypes.c_void_p
+        hwnd = user32.FindWindowW("BearLayeredWnd_1", None)
+        if not hwnd:
+            return
+        user32.ShowWindow(hwnd, 5)  # SW_SHOW
+        # HWND_TOPMOST + SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
+        user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)
+        user32.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
+
+
 def main() -> int:
     if not _single_instance():
+        _activate_existing()
         return 0
     try:
         from bearpet.app import BearPet

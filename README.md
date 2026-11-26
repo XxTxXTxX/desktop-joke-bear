@@ -208,19 +208,20 @@ epeat: daily|weekday；
 
 | 系统 | 生成方式 | 产物 |
 |---|---|---|
-| Windows | 双击 `build_windows.bat`（需在 Windows 上运行） | `自嘲熊.exe` |
+| Windows | 双击 `build_windows.bat`（需在 Windows 上运行） | `自嘲熊.exe` + `_internal\` |
 | macOS | `./build_mac.sh` | `自嘲熊.app` |
 
 两个构建脚本用的是同一份源码，PyInstaller 会把 Python、Pillow、PyObjC 和图集
 全部打进产物。exe 无法在 macOS 上交叉编译，所以 Windows 版请在 Windows 机器上
-跑一次 `build_windows.bat`。脚本会把生成的 `自嘲熊.exe` 安装到 `C:\DeskBear\` 并在
-桌面创建快捷方式，双击快捷方式即可使用。
+跑一次 `build_windows.bat`。脚本会把生成的整个程序目录安装到
+`C:\DeskBear\自嘲熊\`（`自嘲熊.exe` 和 `_internal\` 放在同一目录），并在桌面创建
+指向该 exe 的快捷方式，双击快捷方式即可使用。仓库目录里也会同步一份同样的
+程序目录，所以直接双击仓库里的 `自嘲熊.exe` 也能启动。
 
-> Windows 上请从 `C:\DeskBear\自嘲熊.exe` 启动，不要直接双击仓库目录里的 exe。
-> 若系统 TEMP/TMP 是 `C:\Users\ADMINI~1\AppData\Local\Temp` 这类 8.3 短路径，
-> PyInstaller 单文件版在某些目录下会因无法创建 `_MEI` 临时目录而报
-> "Could not create temporary directory!"。exe 已固定使用
-> `C:\DeskBear\runtime` 作为运行时目录，避开系统 TEMP。
+> Windows 版是 **onedir** 形式：`自嘲熊.exe` 必须和 `_internal\` 放在一起。
+> 启动时不做任何解压，不依赖系统 TEMP，因此不会出现单文件版在 8.3 短路径
+> TEMP 下的 "Could not create temporary directory!" 报错。移动或复制时请把
+> 整个目录一起带走。
 
 ### Windows 版自动更新
 
@@ -316,7 +317,7 @@ macOS（推荐 .app）：
 
 ```
 desktop-bear/
-├─ build_windows.bat       Windows 打包脚本 → 自嘲熊.exe
+├─ build_windows.bat       Windows 打包脚本 → 自嘲熊.exe + _internal/
 ├─ build_mac.sh            macOS 打包脚本 → 自嘲熊.app（自带 Python）
 ├─ 启动自嘲熊.py           通用启动器（未打包时共用）
 ├─ 自嘲熊.app              macOS 应用包（make_app.sh 生成）
