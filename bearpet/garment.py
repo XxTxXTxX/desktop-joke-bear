@@ -88,22 +88,23 @@ def _blobs(mask: Image.Image, box, min_area=12, max_area=260):
     return out
 
 
-def _find_eyes(idx_cell: Image.Image, mapper, cx: float, head_cy: float, head_w: float):
-    radius_x = head_w * 0.55
-    radius_y = head_w * 0.42
-    box = (cx - radius_x, head_cy - radius_y, cx + radius_x, head_cy + radius_y)
+def _find_eyes(idx_cell: Image.Image, mapper, cx: float, head_cy: float, head_w: float,
+               wide: bool = False):
+    radius_x = head_w * (0.62 if wide else 0.55)
+    radius_y = head_w * (0.78 if wide else 0.42)
+    box = (cx - radius_x, head_cy - radius_y * 0.65, cx + radius_x, head_cy + radius_y)
     cands = []
     for bx, by, area, w, h in _blobs(idx_cell.point(_dark_lut(mapper)), box):
         if w > 13 or h > 13:
             continue
-        if abs(bx - cx) > radius_x * 0.85:
+        if abs(bx - cx) > radius_x * (0.95 if wide else 0.85):
             continue
-        if abs(by - head_cy) > radius_y * 0.8:
+        if not (box[1] <= by <= box[3]):
             continue
         cands.append((bx, by, area))
     if len(cands) < 2:
         return None
-    span_min, span_max = head_w * 0.10, head_w * 0.26
+    span_min, span_max = head_w * (0.07 if wide else 0.10), head_w * 0.26
     span_ideal = head_w * 0.19
     best = None
     for i in range(len(cands)):
@@ -112,17 +113,18 @@ def _find_eyes(idx_cell: Image.Image, mapper, cx: float, head_cy: float, head_w:
             x2, y2, a2 = cands[j]
             if x1 > x2:
                 x1, y1, a1, x2, y2, a2 = x2, y2, a2, x1, y1, a1
-            if abs(y1 - y2) > 4.0:
+            if abs(y1 - y2) > (13.0 if wide else 4.0):
                 continue
             span = x2 - x1
             if not (span_min <= span <= span_max):
                 continue
             area_pen = 0.0 if (20 <= a1 <= 200 and 20 <= a2 <= 200) else 240.0
             mid = (x1 + x2) / 2.0
+            cx_w = 0.12 if wide else 0.4
             score = (abs(y1 - y2) * 4.0
                      + abs(span - span_ideal) * 3.0
                      + abs(a1 - a2) * 0.3
-                     + abs(mid - cx) * 0.4
+                     + abs(mid - cx) * cx_w
                      + area_pen)
             if best is None or score < best[0]:
                 best = (score, x1, x2, (y1 + y2) / 2.0)
@@ -142,7 +144,7 @@ def compute_anchors(sheet: "sp.SpriteSheet", state: str, idx: int) -> Anchors:
     feet_y = float(alpha_bb[3]) if alpha_bb else 203.0
 
     cb = _crown_mask(idx_cell, sheet.mapper).getbbox()
-    head_top = (cb[3] - CROWN_MARGIN) if cb is not None else (alpha_bb[1] if alpha_bb else 20.0) + 26.0
+    head_top = (cb[3] - CROWN_MARGIN) if cb is not None else (alpha_bb[1] if alpha_bb else 20.0) + 12.0
     head_cy = head_top + HEAD_R
 
     body = _role_mask(idx_cell, sheet.mapper, omod.BODY)
@@ -154,19 +156,35 @@ def compute_anchors(sheet: "sp.SpriteSheet", state: str, idx: int) -> Anchors:
     else:
         cx = ((alpha_bb[0] + alpha_bb[2]) / 2.0) if alpha_bb else sp.CELL_W / 2.0
         head_w = HEAD_R * 2.0
+    body_cx = cx
 
-    eyes = _find_eyes(idx_cell, sheet.mapper, cx, head_cy, head_w)
+    is_look = state.startswith("look-")
+    eyes = _find_eyes(idx_cell, sheet.mapper, cx, head_cy, head_w, wide=is_look)
     if eyes is not None:
         ex_l, ex_r, ey = eyes
-        cx = (ex_l + ex_r) / 2.0
+        eye_cx = (ex_l + ex_r) / 2.0
+        # Look-direction frames shift the eyes horizontally while the head crown stays centered.
+        cx = eye_cx if cb is not None else (body_cx * 0.65 + eye_cx * 0.35)
         eye_dx = (ex_r - ex_l) / 2.0
-        head_cy = ey + head_w * 0.07
+        if is_look:
+            neck_y = head_cy + head_w * 0.42
+        else:
+            head_cy = ey + head_w * 0.07
+            neck_y = head_cy + head_w * 0.34
     else:
         eye_dx = head_w * 0.165
         ex_l, ex_r = cx - eye_dx, cx + eye_dx
         ey = head_cy - 2.0
+        neck_y = head_cy + head_w * 0.34
+        if state.startswith("look-"):
+            idx_num = int(state.split("-", 1)[1])
+            ang = math.radians(idx_num * 22.5)
+            ex_off = math.sin(ang) * head_w * 0.24
+            ey_off = -math.cos(ang) * head_w * 0.14
+            ex_l += ex_off
+            ex_r += ex_off
+            ey += ey_off
 
-    neck_y = head_cy + head_w * 0.34
     return Anchors(cx=cx, head_top=head_top, head_cy=head_cy, neck_y=neck_y,
                    shoulder_y=neck_y + head_w * 0.10, feet_y=feet_y,
                    half_w=head_w * 0.45,
@@ -244,8 +262,9 @@ def _draw_blush(d, a: Anchors, t: float):
     rx = max(6.0, a.eye_dx * 1.0)
     ry = max(4.0, a.eye_dx * 0.6)
     y = a.eye_y + a.eye_dx * 1.5
+    ex_mid = (a.eye_l + a.eye_r) / 2.0
     for sx in (-1, 1):
-        x = a.cx + sx * a.eye_dx * 2.2
+        x = ex_mid + sx * a.eye_dx * 2.2
         d.ellipse([x - rx, y - ry, x + rx, y + ry], fill=(255, 150, 160, 130))
 
 

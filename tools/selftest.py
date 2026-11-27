@@ -152,6 +152,34 @@ def main() -> int:
     log(f"click speech={pet.brain.speech!r} airborne={not pet.on_ground}")
     h.shot("click")
 
+    log("--- test: cursor look tracking & work escalation ---")
+    h.until(lambda: pet.on_ground, 2.0)
+    pet.brain._enter("idle")
+    pet.brain.blink = 1.0
+    pet.wave_t = 0.0
+    cx0 = pet.x + sprite.W / 2.0
+    cy0 = pet.y + sprite.GROUND - 110.0
+    for dx, dy, expected in ((0, -180, "look-0"), (180, 0, "look-4"),
+                             (0, 120, "look-8"), (-180, 0, "look-12")):
+        set_cursor(cx0 + dx, cy0 + dy)
+        h.step(2)
+        log(f"cursor offset=({dx},{dy}) -> spr_state={pet.spr_state} (expect {expected})")
+        assert pet.spr_state == expected, f"look mismatch: {pet.spr_state} != {expected}"
+    set_cursor(cx0 + 10, cy0 + 10)
+    h.step(2)
+    assert pet.spr_state == "idle", f"deadzone should fall back to idle, got {pet.spr_state}"
+
+    pet.brain.work_heat = 0.0
+    pet.brain.work_streak = 0
+    pet.brain.force("sit")
+    h.step(2)
+    log(f"first work -> spr_state={pet.spr_state}")
+    assert pet.spr_state in ("typing-calm", "keyboard"), f"unexpected calm state: {pet.spr_state}"
+    pet.brain.force("sit")
+    h.step(2)
+    log(f"second work -> spr_state={pet.spr_state}")
+    assert pet.spr_state == "typing-frustrated", f"expected frustrated, got {pet.spr_state}"
+
     log("--- test: autonomous 20s ---")
     states = {}
     end = time.perf_counter() + 20

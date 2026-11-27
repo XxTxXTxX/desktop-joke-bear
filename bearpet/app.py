@@ -109,6 +109,8 @@ class BearPet:
         self.spr_state = "idle"
         self.spr_ms = 0.0
         self.wave_t = 0.0
+        self._look_dir: int | None = None
+        self._look_active = False
 
         self.dragging = False
         self.pressed = False
@@ -441,6 +443,8 @@ class BearPet:
                 fd["phase"] = "happy"
                 fd["t"] = 0.0
                 self._apply_food(fd["food"])
+                if fd["food"].id in ("coffee", "burger"):
+                    self.brain.force(fd["food"].id)
         elif fd["t"] >= 0.8:
             self.feeding = None
 
@@ -724,6 +728,38 @@ class BearPet:
             if self.brain.state == "walk" and self.brain.dir > 0:
                 self.brain.notify_wall()
 
+    def _cursor_look_state(self) -> str | None:
+        if self.sprites is None or not getattr(self.sprites, "has_v2", False):
+            return None
+        if self.brain.blink < 0.72:
+            return None
+        try:
+            cx, cy = winlayer.cursor_pos()
+        except Exception:
+            return None
+        bx = self.x + sprite.W / 2.0
+        by = self.y + sprite.GROUND - 110.0
+        dx = cx - bx
+        dy = cy - by
+        dist = (dx * dx + dy * dy) ** 0.5
+        enter_r = 46.0 if self._look_active else 62.0
+        if dist < enter_r or dist > 980.0:
+            self._look_active = False
+            self._look_dir = None
+            return None
+        self._look_active = True
+        ang = (math.degrees(math.atan2(dx, -dy)) + 360.0) % 360.0
+        step = 22.5
+        cand = int((ang + step / 2.0) // step) % 16
+        prev = self._look_dir
+        if prev is not None and prev != cand:
+            prev_ang = prev * step
+            diff = abs((ang - prev_ang + 180.0) % 360.0 - 180.0)
+            if diff < 14.5:
+                cand = prev
+        self._look_dir = cand
+        return f"look-{cand}"
+
     def sprite_state(self) -> str:
         b = self.brain
         if self.dragging:
@@ -732,11 +768,19 @@ class BearPet:
             return "jumping"
         if self.wave_t > 0.0:
             return "waving"
+        if self.feeding is not None and self.feeding.get("phase") == "eat":
+            fid = self.feeding["food"].id
+            if fid in ("coffee", "burger"):
+                return fid
         st = b.state
         if st == "walk":
             return "running-right" if b.dir > 0 else "running-left"
         if st == "sit":
-            return "running"
+            if getattr(b, "work_frustrated", False):
+                return "typing-frustrated"
+            return getattr(b, "work_variant", "typing-calm")
+        if st in ("coffee", "burger"):
+            return st
         if st == "sleep":
             return "sleep"
         if st in ("sigh", "dizzy"):
@@ -747,6 +791,9 @@ class BearPet:
             return "waving"
         if st == "think":
             return "review"
+        look = self._cursor_look_state()
+        if look is not None:
+            return look
         return "idle"
 
     def advance_animation(self, dt: float):

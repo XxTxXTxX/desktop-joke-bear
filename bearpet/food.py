@@ -23,6 +23,7 @@ class Food:
 FOODS: list[Food] = [
     Food("fish", "小鱼干", 14, 0.3, 2, (222, 176, 92), "小鱼干，还是咸的"),
     Food("rice", "饭团", 22, 0.6, 2, (250, 249, 244), "饭团，碳水让我安心"),
+    Food("burger", "汉堡", 26, 0.9, 3, (218, 146, 72), "双层芝士，热量让我忘记烦恼"),
     Food("cake", "蛋糕", 18, 1.1, 3, (255, 198, 214), "甜一点，就没那么难过了"),
     Food("coffee", "咖啡", 4, 0.1, 1, (122, 84, 56), "喝了也还是困"),
     Food("spicy", "辣条", 10, 0.4, 4, (214, 68, 48), "辣到流泪，正好不用解释"),
@@ -64,6 +65,13 @@ def icon(f: Food, size: int = 34) -> Image.Image:
         d.polygon([(s * 0.5, s * 0.14), (s * 0.88, s * 0.80), (s * 0.12, s * 0.80)],
                   fill=f.color + (255,), outline=ink, width=2)
         d.rectangle([s * 0.36, s * 0.52, s * 0.64, s * 0.72], fill=(40, 70, 50, 255))
+    elif f.id == "burger":
+        d.pieslice([s * 0.14, s * 0.18, s * 0.86, s * 0.72], 180, 360,
+                   fill=f.color + (255,), outline=ink, width=2)
+        d.rectangle([s * 0.12, s * 0.46, s * 0.88, s * 0.54], fill=(116, 188, 78, 255))
+        d.rectangle([s * 0.14, s * 0.54, s * 0.86, s * 0.66], fill=(122, 68, 38, 255), outline=ink, width=1)
+        d.rounded_rectangle([s * 0.16, s * 0.66, s * 0.84, s * 0.82], radius=4,
+                            fill=f.color + (255,), outline=ink, width=2)
     elif f.id == "cake":
         d.rounded_rectangle([s * 0.16, s * 0.42, s * 0.84, s * 0.84], radius=4,
                             fill=f.color + (255,), outline=ink, width=2)
