@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>JokeBear-CodexPet 动作预览</title>
+<style>
+  :root { --bg:#fdfbf6; --ink:#3a281a; --muted:#968674; --line:#e8e0d4; --card:#fffdf9; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:40px 32px 64px; background:var(--bg); color:var(--ink);
+         font:15px/1.6 "Microsoft YaHei","PingFang SC",system-ui,sans-serif; }
+  header { max-width:1080px; margin:0 auto 28px; }
+  h1 { margin:0 0 6px; font-size:26px; }
+  .lede { color:var(--muted); margin:0; }
+  .grid { max-width:1080px; margin:0 auto; display:grid; gap:18px;
+           grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px;
+           padding:16px 16px 12px; display:flex; flex-direction:column; gap:10px;
+           box-shadow:0 2px 10px rgba(58,40,26,.05); }
+  .card h2 { margin:0; font-size:17px; }
+  .sub { margin:2px 0 0; color:var(--muted); font-size:12px; }
+  .note { margin:6px 0 0; font-size:13px; }
+  .card img { width:100%; max-width:384px; align-self:center; border-radius:10px; background:var(--bg); }
+  .look { max-width:1080px; margin:36px auto 0; }
+  .look img { width:100%; border:1px solid var(--line); border-radius:16px; background:var(--card); }
+  footer { max-width:1080px; margin:28px auto 0; color:var(--muted); font-size:12px; }
+</style>
+<header>
+  <h1>JokeBear-CodexPet · 动作预览</h1>
+  <p class="lede">petdex 上的自嘲熊 v2 桌宠包：9 个标准动作 + 16 个注视方向，共 88 格。</p>
+</header>
+<main class="grid">
+      <section class="card">
+        <div class="meta">
+          <h2>0. 待机</h2>
+          <p class="sub">row 0 · 6 帧 · 1100 ms/轮</p>
+          <p class="note">眨眼、轻微呼吸；第 7 格是 v2 的正脸注视帧</p>
+        </div>
+        <img src="gifs/00-idle.gif" alt="待机">
+      </section>
+      <section class="card">
+        <div class="meta">
+          <h2>1. 敲电脑 · 平静</h2>
+          <p class="sub">row 1 · 8 帧 · 1060 ms/轮</p>
+          <p class="note">抱着笔电打字，后半段开始冒汗</p>
+        </div>
+        <img src="gifs/01-typing-calm.gif" alt="敲电脑 · 平静">
+      </section>
+      <section class="card">
+        <div class="meta">
+          <h2>2. 敲电脑 · 抓狂</h2>
+          <p class="sub">row 2 · 8 帧 · 1060 ms/轮</p>
+          <p class="note">全程冒汗、越敲越急</p>
+        </div>
+        <img src="gifs/02-typing-frustrated.gif" alt="敲电脑 · 抓狂">
+      </section>
+      <section class="card">
+        <div class="meta">
+          <h2>3. 挥手</h2>
+          <p class="sub">row 3 · 4 帧 · 700 ms/轮</p>
+          <p class="note">抬爪打招呼</p>
+        </div>
+        <img src="gifs/03-wave.gif" alt="挥手">
+      </section>
+      <section class="card">
+        <div class="meta">
+          <h2>4. 跳跃</h2>
+          <p class="sub">row 4 · 5 帧 · 840 ms/轮</p>
+          <p class="note">静态起落版，没有腾空位移</p>
+        </div>
+        <img src="gifs/04-jump.gif" alt="跳跃">
+      </section>
+      <section class="card">
+        <div class="meta">
+          <h2>5. 摔倒</h2>
+          <p class="sub">row 5 · 8 帧 · 1220 ms/轮</p>
+          <p class="note">翻倒、躺平、再爬起来</p>
+        </div>
+        <img src="gifs/05-fail.gif" alt="摔倒">
+      </section>
+      <section class="card">
+        <div class="meta">
+          <h2>6. 喝咖啡</h2>
+          <p class="sub">row 6 · 6 帧 · 1010 ms/轮</p>
+          <p class="note">捧着杯子小口喝</p>
+        </div>
+        <img src="gifs/06-coffee.gif" alt="喝咖啡">
+      </section>
+      <section class="card">
+        <div class="meta">
+          <h2>7. 敲键盘</h2>
+          <p class="sub">row 7 · 6 帧 · 820 ms/轮</p>
+          <p class="note">在独立键盘上敲字</p>
+        </div>
+        <img src="gifs/07-keyboard.gif" alt="敲键盘">
+      </section>
+      <section class="card">
+        <div class="meta">
+          <h2>8. 吃汉堡</h2>
+          <p class="sub">row 8 · 6 帧 · 1030 ms/轮</p>
+          <p class="note">抱着汉堡啃</p>
+        </div>
+        <img src="gifs/08-burger.gif" alt="吃汉堡">
+      </section></main>
+<section class="look">
+  <h2>16 方向注视</h2>
+  <p class="lede">0° 朝上，顺时针每 22.5° 一格；90° 朝右，180° 朝下，270° 朝左。</p>
+  <img src="look-directions.png" alt="16 方向注视">
+</section>
+<footer>原始素材：assets/petdex/jokebear-codexpet/spritesheet.webp · 由 Petdex 图集逐帧导出</footer>
+</html>

@@ -1,0 +1,152 @@
+{
+  "source": "petdex:jokebear-codexpet",
+  "spritesheet": "spritesheet.webp",
+  "grid": {
+    "cols": 8,
+    "rows": 11,
+    "cell": [
+      192,
+      208
+    ]
+  },
+  "actions": [
+    {
+      "row": 0,
+      "slug": "idle",
+      "name": "待机",
+      "frames": 6,
+      "timing_ms": [
+        280,
+        110,
+        110,
+        140,
+        140,
+        320
+      ],
+      "note": "眨眼、轻微呼吸；第 7 格是 v2 的正脸注视帧"
+    },
+    {
+      "row": 1,
+      "slug": "typing-calm",
+      "name": "敲电脑 · 平静",
+      "frames": 8,
+      "timing_ms": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        220
+      ],
+      "note": "抱着笔电打字，后半段开始冒汗"
+    },
+    {
+      "row": 2,
+      "slug": "typing-frustrated",
+      "name": "敲电脑 · 抓狂",
+      "frames": 8,
+      "timing_ms": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        220
+      ],
+      "note": "全程冒汗、越敲越急"
+    },
+    {
+      "row": 3,
+      "slug": "wave",
+      "name": "挥手",
+      "frames": 4,
+      "timing_ms": [
+        140,
+        140,
+        140,
+        280
+      ],
+      "note": "抬爪打招呼"
+    },
+    {
+      "row": 4,
+      "slug": "jump",
+      "name": "跳跃",
+      "frames": 5,
+      "timing_ms": [
+        140,
+        140,
+        140,
+        140,
+        280
+      ],
+      "note": "静态起落版，没有腾空位移"
+    },
+    {
+      "row": 5,
+      "slug": "fail",
+      "name": "摔倒",
+      "frames": 8,
+      "timing_ms": [
+        140,
+        140,
+        140,
+        140,
+        140,
+        140,
+        140,
+        240
+      ],
+      "note": "翻倒、躺平、再爬起来"
+    },
+    {
+      "row": 6,
+      "slug": "coffee",
+      "name": "喝咖啡",
+      "frames": 6,
+      "timing_ms": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        260
+      ],
+      "note": "捧着杯子小口喝"
+    },
+    {
+      "row": 7,
+      "slug": "keyboard",
+      "name": "敲键盘",
+      "frames": 6,
+      "timing_ms": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        220
+      ],
+      "note": "在独立键盘上敲字"
+    },
+    {
+      "row": 8,
+      "slug": "burger",
+      "name": "吃汉堡",
+      "frames": 6,
+      "timing_ms": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        280
+      ],
+      "note": "抱着汉堡啃"
+    }
+  ]
+}

@@ -325,6 +325,20 @@ macOS（推荐 .app）：
 | 左键双击 | 换一句话说 |
 | 右键 | 菜单：说句话 / 敲会儿键盘 / 躺一会儿 / 投喂 / 换装 / 大小 / 提醒 / 退出 |
 
+## 动作素材（Petdex）
+
+`assets/petdex/jokebear-codexpet/` 是从 Petdex 拉下来的 `jokebear-codexpet`
+v2 桌宠包（8×11 图集，1536×2288）：9 个标准动作 + 16 个注视方向。
+
+- `spritesheet.webp` / `pet.json`：原始包，可直接被 Petdex / Codex 读取；
+- `actions.json`：逐行动作名、帧数、每帧时长；
+- `preview/petdex/jokebear/index.html`：浏览器里逐个播放的 GIF 预览；
+- `preview/petdex/jokebear/contact-sheet.png`：88 格总览；
+- `preview/petdex/jokebear/look-directions.png`：16 方向注视。
+
+动作行：0 待机 / 1 敲电脑·平静 / 2 敲电脑·抓狂 / 3 挥手 / 4 跳跃（静态）/
+5 摔倒 / 6 喝咖啡 / 7 敲键盘 / 8 吃汉堡；行 9–10 是 0°–337.5° 的注视方向。
+
 ## 结构
 
 ```
@@ -361,6 +375,7 @@ desktop-bear/
 ├─ relay/                 手机端中继服务（纯标准库）+ 手机网页 + 部署说明
 ├─ assets/sprite.png       Petdex 图集（1536×1872），换皮就换这个文件
 ├─ assets/petdex-zichao-bear-2.zip   原始下载包（含 pet.json）
+├─ assets/petdex/jokebear-codexpet/  v2 动作包（9 动作 + 16 注视方向）
 ├─ .bear.json              换装持久化
 ├─ tools/selftest.py       交互自测：菜单 / 拖拽 / 落地 / 点击 / 20 秒自主行为
 ├─ tools/test_outfit.py    配色自测
