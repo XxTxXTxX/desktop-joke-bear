@@ -166,6 +166,34 @@ user32.SetForegroundWindow.argtypes = [wt.HWND]
 user32.DestroyWindow.argtypes = [wt.HWND]
 user32.PostQuitMessage.argtypes = [ctypes.c_int]
 user32.ShowWindow.argtypes = [wt.HWND, ctypes.c_int]
+user32.GetForegroundWindow.restype = wt.HWND
+user32.GetForegroundWindow.argtypes = []
+user32.IsWindow.restype = wt.BOOL
+user32.IsWindow.argtypes = [wt.HWND]
+user32.IsWindowVisible.restype = wt.BOOL
+user32.IsWindowVisible.argtypes = [wt.HWND]
+user32.IsIconic.restype = wt.BOOL
+user32.IsIconic.argtypes = [wt.HWND]
+user32.IsZoomed.restype = wt.BOOL
+user32.IsZoomed.argtypes = [wt.HWND]
+user32.GetWindowRect.restype = wt.BOOL
+user32.GetWindowRect.argtypes = [wt.HWND, ctypes.POINTER(wt.RECT)]
+user32.GetClassNameW.restype = ctypes.c_int
+user32.GetClassNameW.argtypes = [wt.HWND, wt.LPWSTR, ctypes.c_int]
+user32.GetWindowThreadProcessId.restype = wt.DWORD
+user32.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
+kernel32.GetCurrentProcessId.restype = wt.DWORD
+kernel32.GetCurrentProcessId.argtypes = []
+
+try:
+    dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
+    dwmapi.DwmGetWindowAttribute.restype = ctypes.c_long
+    dwmapi.DwmGetWindowAttribute.argtypes = [
+        wt.HWND, wt.DWORD, wt.LPVOID, wt.DWORD,
+    ]
+except Exception:
+    dwmapi = None
+DWMWA_EXTENDED_FRAME_BOUNDS = 9
 
 gdi32.CreateCompatibleDC.restype = wt.HDC
 gdi32.CreateCompatibleDC.argtypes = [wt.HDC]
@@ -199,6 +227,68 @@ def work_area(hwnd: int) -> tuple[int, int, int, int]:
         r = mi.rcWork
         return r.left, r.top, r.right, r.bottom
     return 0, 0, 1920, 1040
+
+
+_SKIP_CLASSES = {
+    "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd",
+    "Windows.UI.Core.CoreWindow", "MultitaskingViewFrame", "ForegroundStaging",
+    "NotifyIconOverflowWindow",
+}
+
+
+def window_bounds(hwnd: int) -> tuple[int, int, int, int] | None:
+    """获取指定窗口的可见外框 (left, top, right, bottom)；若窗口已关闭或最小化返回 None。"""
+    if not hwnd or not user32.IsWindow(hwnd) or not user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd):
+        return None
+    r = wt.RECT()
+    if dwmapi is not None:
+        hr = dwmapi.DwmGetWindowAttribute(
+            hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, ctypes.byref(r), ctypes.sizeof(r)
+        )
+        if hr == 0 and r.right > r.left and r.bottom > r.top:
+            return r.left, r.top, r.right, r.bottom
+    if user32.GetWindowRect(hwnd, ctypes.byref(r)) and r.right > r.left and r.bottom > r.top:
+        return r.left, r.top, r.right, r.bottom
+    return None
+
+
+def foreground_window_ledge(bear_hwnd: int | None = None) -> tuple[int, int, int, int, int] | None:
+    """若当前前台窗口是普通窗口化（非全屏、非最大化）窗口，返回 (hwnd, left, top, right, bottom)。"""
+    fg = user32.GetForegroundWindow()
+    if not fg or fg == bear_hwnd:
+        return None
+    if not user32.IsWindowVisible(fg) or user32.IsIconic(fg) or user32.IsZoomed(fg):
+        return None
+    pid = wt.DWORD(0)
+    user32.GetWindowThreadProcessId(fg, ctypes.byref(pid))
+    if pid.value == kernel32.GetCurrentProcessId():
+        return None
+    buf = ctypes.create_unicode_buffer(64)
+    user32.GetClassNameW(fg, buf, 64)
+    cls = buf.value
+    if cls in _SKIP_CLASSES or cls.startswith("BearLayeredWnd_"):
+        return None
+    rect = window_bounds(fg)
+    if rect is None:
+        return None
+    l, t, r, b = rect
+    w_left, w_top, w_right, w_bottom = work_area(bear_hwnd or fg)
+    work_w = max(1, w_right - w_left)
+    work_h = max(1, w_bottom - w_top)
+    width = r - l
+    height = b - t
+    # 排除最大化/近全屏窗口，以及太窄、顶边太靠上或太贴地的窗口
+    if width >= work_w - 28 and height >= work_h - 28:
+        return None
+    if width < 220 or height < 120:
+        return None
+    if t < w_top + 110 or t > w_bottom - 90:
+        return None
+    cl = max(l, w_left)
+    cr = min(r, w_right)
+    if cr - cl < 180:
+        return None
+    return int(fg), cl, t, cr, b
 
 
 class LayeredWindow:

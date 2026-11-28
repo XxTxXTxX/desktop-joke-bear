@@ -159,15 +159,23 @@ def main() -> int:
     pet.wave_t = 0.0
     cx0 = pet.x + sprite.W / 2.0
     cy0 = pet.y + sprite.GROUND - 110.0
-    for dx, dy, expected in ((0, -180, "look-0"), (180, 0, "look-4"),
-                             (0, 120, "look-8"), (-180, 0, "look-12")):
-        set_cursor(cx0 + dx, cy0 + dy)
+    orig_cursor = winlayer.cursor_pos
+    fake_pt = [int(cx0), int(cy0)]
+    winlayer.cursor_pos = lambda: (fake_pt[0], fake_pt[1])
+    app.winlayer.cursor_pos = winlayer.cursor_pos
+    try:
+        for dx, dy, expected in ((0, -180, "look-0"), (180, 0, "look-4"),
+                                 (0, 120, "look-8"), (-180, 0, "look-12")):
+            fake_pt[0], fake_pt[1] = int(cx0 + dx), int(cy0 + dy)
+            h.step(2)
+            log(f"cursor offset=({dx},{dy}) -> spr_state={pet.spr_state} (expect {expected})")
+            assert pet.spr_state == expected, f"look mismatch: {pet.spr_state} != {expected}"
+        fake_pt[0], fake_pt[1] = int(cx0 + 10), int(cy0 + 10)
         h.step(2)
-        log(f"cursor offset=({dx},{dy}) -> spr_state={pet.spr_state} (expect {expected})")
-        assert pet.spr_state == expected, f"look mismatch: {pet.spr_state} != {expected}"
-    set_cursor(cx0 + 10, cy0 + 10)
-    h.step(2)
-    assert pet.spr_state == "idle", f"deadzone should fall back to idle, got {pet.spr_state}"
+        assert pet.spr_state == "idle", f"deadzone should fall back to idle, got {pet.spr_state}"
+    finally:
+        winlayer.cursor_pos = orig_cursor
+        app.winlayer.cursor_pos = orig_cursor
 
     pet.brain.work_heat = 0.0
     pet.brain.work_streak = 0

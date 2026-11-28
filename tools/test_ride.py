@@ -8,19 +8,30 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(BASE, ".deps"))
 sys.path.insert(0, BASE)
 
-from PIL import ImageGrab
-
-from bearpet import app, winlayer
+from bearpet import app, sprite, winlayer
 
 OUT = os.path.join(BASE, "preview")
 LOG = os.path.join(OUT, "ride_test.log")
 open(LOG, "w", encoding="utf-8").close()
 
 FAKE = {"x": 900, "y": 500}
+FAKE_WIN = {"visible": True, "l": 500, "t": 420, "r": 1220, "b": 900}
 
 
 def fake_cursor():
     return FAKE["x"], FAKE["y"]
+
+
+def fake_ledge(bear_hwnd=None):
+    if not FAKE_WIN["visible"]:
+        return None
+    return 99999, FAKE_WIN["l"], FAKE_WIN["t"], FAKE_WIN["r"], FAKE_WIN["b"]
+
+
+def fake_bounds(hwnd):
+    if not FAKE_WIN["visible"] or hwnd != 99999:
+        return None
+    return FAKE_WIN["l"], FAKE_WIN["t"], FAKE_WIN["r"], FAKE_WIN["b"]
 
 
 def log(m):
@@ -32,6 +43,11 @@ def log(m):
 def main() -> int:
     winlayer.cursor_pos = fake_cursor
     app.winlayer.cursor_pos = fake_cursor
+    winlayer.foreground_window_ledge = fake_ledge
+    app.winlayer.foreground_window_ledge = fake_ledge
+    winlayer.window_bounds = fake_bounds
+    app.winlayer.window_bounds = fake_bounds
+
     pet = app.BearPet()
     pet.store.items = []
     pet.brain.speech = None
@@ -42,57 +58,41 @@ def main() -> int:
             pet.update(dt)
             pet.draw()
 
-    def shot(tag):
-        path = os.path.join(OUT, f"ride_{tag}.png")
-        x = max(0, int(pet.x) - 20)
-        y = max(0, int(pet.y) - 20)
-        ImageGrab.grab(bbox=(x, y, min(1920, x + 340), min(1080, y + 360))).save(path)
-        return path
-
     tick(30)
-    log(f"start riding={pet.riding} climb={pet.climb is not None} pos=({pet.x:.0f},{pet.y:.0f})")
+    # 1. Idle cursor for 15 seconds must NOT trigger cursor riding
+    pet._parkour_next = 999.0
+    tick(int(15 * 60))
+    log(f"after 15s cursor idle: riding={pet.riding} climb={pet.climb}")
+    assert not pet.riding and pet.climb is None, "cursor riding should be removed"
 
-    tick(int(9 * 60))
-    log(f"t=9s riding={pet.riding} climb={pet.climb is not None} idle={pet._cursor_idle:.1f}")
-    assert not pet.riding and pet.climb is None, "9 秒就爬上去了"
+    # 2. Trigger desktop parkour onto windowed foreground window top edge
+    pet.brain._enter("idle")
+    pet._parkour_next = 0.05
+    tick(10)
+    assert pet.perch is not None, "should start parkour jump onto foreground window"
+    log(f"parkour started: vy={pet.vy:.0f} vx={pet.vx:.0f} target_y={pet.perch['y_ground']:.0f}")
 
-    tick(int(2 * 60))
-    log(f"t=11s riding={pet.riding} climb={pet.climb is not None}")
-    assert pet.riding or pet.climb is not None, "超过 10 秒没反应"
+    # Wait until it lands on the window top edge
+    tick(int(2.2 * 60))
+    expected_y = float(FAKE_WIN["t"] - sprite.GROUND)
+    log(f"on window ledge: on_ground={pet.on_ground} y={pet.y:.0f} expected_y={expected_y:.0f} state={pet.brain.state}")
+    assert pet.on_ground and abs(pet.y - expected_y) < 2.0, "should land on window top edge"
 
-    tick(int(1.5 * 60))
-    log(f"after climb riding={pet.riding} pos=({pet.x:.0f},{pet.y:.0f}) speech={pet.brain.speech!r}")
-    assert pet.riding, "没进入骑乘状态"
-    shot("on_cursor")
+    # Walk along the window top edge and verify it stays clamped to [left, right]
+    pet.brain.force("walk")
+    tick(int(3.0 * 60))
+    half_foot = 28.0 * pet._draw_scale()
+    xmin = FAKE_WIN["l"] - sprite.W / 2.0 + half_foot
+    xmax = FAKE_WIN["r"] - sprite.W / 2.0 - half_foot
+    log(f"walking on ledge: x={pet.x:.1f} bounds=({xmin:.1f},{xmax:.1f})")
+    assert xmin - 1.0 <= pet.x <= xmax + 1.0, "bear walked off the window edge"
 
-    for _ in range(10):
-        FAKE["x"] += 8
-        tick(1)
-    log(f"follow pos=({pet.x:.0f},{pet.y:.0f}) cursor=({FAKE['x']},{FAKE['y']})")
-    assert pet.riding, "正常移动就掉下来了"
-
-    FAKE["x"] += 200
-    tick(2)
-    log(f"after flick riding={pet.riding} on_ground={pet.on_ground} vy={pet.vy:.0f}")
-    assert not pet.riding, "甩不下来"
-    tick(int(2 * 60))
-    log(f"landed on_ground={pet.on_ground} y={pet.y:.0f} ground={pet.y_ground:.0f}")
-    assert pet.on_ground, "没落地"
-
-    FAKE["x"] += 5
-    tick(5)
-    tick(int(12 * 60))
-    log(f"second ride riding={pet.riding} climb={pet.climb is not None}")
-    assert pet.riding or pet.climb is not None, "第二次没爬上去"
-
-    tick(int(1.5 * 60))
-    pet._on_down(FAKE["x"], FAKE["y"])
-    tick(2)
-    log(f"after click riding={pet.riding}")
-    assert not pet.riding, "点击没下来"
-
-    log(f"default size = {pet.size_scale}")
-    assert abs(pet.size_scale - 0.5) < 1e-6, "默认大小不是 50%"
+    # Closing/minimizing the window drops the bear back to the desktop floor
+    FAKE_WIN["visible"] = False
+    tick(int(2.0 * 60))
+    floor_y = float(winlayer.ground_bottom() - 1 - sprite.GROUND)
+    log(f"after window closed: perch={pet.perch} on_ground={pet.on_ground} y={pet.y:.0f} floor={floor_y:.0f}")
+    assert pet.perch is None and pet.on_ground and abs(pet.y - floor_y) < 2.0, "should fall back to desktop floor"
 
     pet.shutdown()
     log("ALL OK")

@@ -180,6 +180,14 @@ def work_area(hwnd) -> tuple[int, int, int, int]:
             int(round(top - f.origin.y)))
 
 
+def window_bounds(hwnd: int) -> tuple[int, int, int, int] | None:
+    return None
+
+
+def foreground_window_ledge(bear_hwnd: int | None = None) -> tuple[int, int, int, int, int] | None:
+    return None
+
+
 def _monitor_mask():
     return (NSEventMaskLeftMouseUp | NSEventMaskLeftMouseDragged |
             NSEventMaskMouseMoved | NSEventMaskRightMouseUp)

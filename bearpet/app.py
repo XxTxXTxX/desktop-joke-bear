@@ -87,6 +87,8 @@ class BearPet:
         self._cursor_last = None
         self._cursor_idle = 0.0
         self._cursor_speed = 0.0
+        self.perch: dict | None = None
+        self._parkour_next = self.brain.rng.uniform(75.0, 150.0)
 
         self.chat = chat.ChatClient(self)
         self.chat_window = None
@@ -141,9 +143,6 @@ class BearPet:
         if (self.menu_open or self.wardrobe_is_open or self.feed_is_open
                 or self.size_is_open or self.reminders_open or self.editor_open):
             return
-        if self.riding:
-            self.stop_riding(thrown=False)
-            return
         self.pressed = True
         self.dragging = False
         self.press_at = time.perf_counter()
@@ -160,6 +159,7 @@ class BearPet:
             if dx * dx + dy * dy < 16:
                 return
             self.dragging = True
+            self.perch = None
             self.brain.notify_pickup()
             _log(f"drag start at ({sx},{sy})")
         self.x = sx + self.grab[0]
@@ -184,6 +184,7 @@ class BearPet:
         else:
             _log("click -> hop")
             self.brain.notify_click()
+            self.play_sound("poke.wav")
             self.wave_t = 0.9
             self.vy = -300.0
             self.on_ground = False
@@ -304,6 +305,7 @@ class BearPet:
         self.stats["weight"] = round(min(120.0, self.stats["weight"] + f.weight), 2)
         self.stats["fed"] = int(self.stats.get("fed", 0)) + 1
         self.brain.say(f.line, 2.6)
+        self.play_sound("eat.wav")
         self._save_config()
         if self.feed_panel:
             self.feed_panel.refresh()
@@ -448,35 +450,6 @@ class BearPet:
         elif fd["t"] >= 0.8:
             self.feeding = None
 
-    def _ride_scale(self) -> float:
-        return max(0.6, self.size_scale)
-
-    def _ride_offset(self):
-        fig = pixelfig.render(self._ride_scale())
-        dx = (sprite.W - fig.width) // 2
-        dy = 112
-        return fig, dx + int(fig.width * 0.60), dy + int(fig.height * 0.86)
-
-    def _start_climb(self):
-        self.climb = {"t": 0.0, "x": self.x, "y": self.y}
-        self.brain.say_rand(lines.CLIMB_LINES, 2.2)
-
-    def start_riding(self):
-        self.riding = True
-        self.climb = None
-        self.pressed = False
-        self.dragging = False
-        self.brain.say_rand(lines.RIDE_LINES, 2.4)
-
-    def stop_riding(self, thrown: bool):
-        if not self.riding:
-            return
-        self.riding = False
-        self.on_ground = False
-        self.vy = -240.0 if thrown else -120.0
-        self.vx = max(-900.0, min(900.0, self._cursor_speed * 0.25))
-        self.brain.say_rand(lines.THROWN_LINES, 2.0)
-
     def _tick_cursor(self, dt: float):
         cx, cy = winlayer.cursor_pos()
         if self._cursor_last is None:
@@ -488,32 +461,111 @@ class BearPet:
         self._cursor_speed = moved / max(dt, 1e-3)
         self._cursor_idle = self._cursor_idle + dt if moved < 0.6 else 0.0
 
-        if self.riding:
-            fig, ox, oy = self._ride_offset()
-            self.x = cx - ox
-            self.y = cy - oy
-            self._clamp_drag()
-            if self._cursor_speed > 1500.0 or moved > 45.0:
-                self.stop_riding(thrown=True)
-            return
+    def _start_parkour(self) -> bool:
+        fn = getattr(winlayer, "foreground_window_ledge", None)
+        if fn is None:
+            return False
+        info = fn(getattr(self.win, "hwnd", None))
+        if info is None:
+            return False
+        hwnd, wl, wt_y, wr, _wb = info
+        target_y = float(wt_y - sprite.GROUND)
+        if self.y - target_y < 70.0:
+            return False
+        half_foot = 28.0 * self._draw_scale()
+        xmin = float(wl) - sprite.W / 2.0 + half_foot
+        xmax = float(wr) - sprite.W / 2.0 - half_foot
+        if xmax < xmin:
+            return False
+        tx = max(xmin, min(xmax, self.x + self.brain.rng.uniform(-110.0, 110.0)))
+        dy = max(80.0, self.y - target_y + 42.0)
+        vy = -(2.0 * GRAVITY * dy) ** 0.5
+        t_flight = max(0.35, min(1.35, abs(vy) / GRAVITY * 1.35))
+        vx = max(-760.0, min(760.0, (tx - self.x) / t_flight))
+        self.perch = {
+            "hwnd": hwnd,
+            "left": float(wl),
+            "right": float(wr),
+            "top": float(wt_y),
+            "y_ground": target_y,
+            "t": 0.0,
+            "dur": self.brain.rng.uniform(12.0, 24.0),
+            "jumping_up": True,
+        }
+        self.y_ground = target_y
+        self.vy = vy
+        self.vx = vx
+        self.on_ground = False
+        self.brain.force("walk")
+        self.brain.say_rand(lines.PARKOUR_UP_LINES, 2.8)
+        self.play_sound("parkour.wav")
+        _log(f"parkour jump -> hwnd={hwnd} top={wt_y} span=({wl},{wr}) vy={vy:.0f} vx={vx:.0f}")
+        return True
 
-        if self.climb is not None:
-            c = self.climb
-            c["t"] += dt / 0.9
-            k = min(1.0, c["t"])
-            ease = k * k * (3 - 2 * k)
-            fig, ox, oy = self._ride_offset()
-            self.x = c["x"] + (cx - ox - c["x"]) * ease
-            self.y = c["y"] + (cy - oy - c["y"]) * ease
-            if k >= 1.0:
-                self.start_riding()
+    def _leave_perch(self, hop: bool = True, say: bool = False):
+        if self.perch is None:
             return
+        self.perch = None
+        self.y_ground = float(winlayer.ground_bottom() - 1 - sprite.GROUND)
+        if self.y < self.y_ground:
+            self.on_ground = False
+            if hop:
+                self.vy = -220.0
+                self.vx = self.brain.rng.choice((-110.0, 110.0))
+        if say:
+            self.brain.say_rand(lines.PARKOUR_DOWN_LINES, 2.4)
 
+    def _tick_parkour(self, dt: float):
         busy = (self.dragging or self.morph is not None or self.menu_open
                 or self.wardrobe_is_open or self.feed_is_open or self.size_is_open
-                or self.reminders_open or self.editor_open)
-        if self._cursor_idle >= 10.0 and self.on_ground and not busy:
-            self._start_climb()
+                or self.reminders_open or self.editor_open or self.chat_open
+                or self.feeding is not None)
+        if self.perch is not None:
+            p = self.perch
+            wb_fn = getattr(winlayer, "window_bounds", None)
+            rect = wb_fn(p["hwnd"]) if wb_fn is not None else None
+            if rect is None:
+                self._leave_perch(hop=False)
+                return
+            wl, wt_y, wr, wb = rect
+            w_left, w_top, w_right, w_bottom = self.win.work_area()
+            if ((wr - wl) >= (w_right - w_left) - 28 and (wb - wt_y) >= (w_bottom - w_top) - 28):
+                self._leave_perch(hop=False)
+                return
+            cl = float(max(wl, w_left))
+            cr = float(min(wr, w_right))
+            if cr - cl < 150.0 or wt_y < w_top + 80 or wt_y > w_bottom - 60:
+                self._leave_perch(hop=False)
+                return
+            new_y = float(wt_y - sprite.GROUND)
+            p["left"], p["right"], p["top"] = cl, cr, float(wt_y)
+            p["y_ground"] = new_y
+            if self.on_ground and not p.get("jumping_up"):
+                if abs(new_y - self.y) <= 48.0:
+                    self.y = new_y
+                elif new_y > self.y:
+                    self.on_ground = False
+                else:
+                    self.y = new_y
+                half_foot = 28.0 * self._draw_scale()
+                xmin = cl - sprite.W / 2.0 + half_foot
+                xmax = cr - sprite.W / 2.0 - half_foot
+                if self.x < xmin - 40.0 or self.x > xmax + 40.0:
+                    self._leave_perch(hop=False)
+                    return
+                p["t"] += dt
+                if p["t"] >= p["dur"] and not busy:
+                    self._leave_perch(hop=True, say=True)
+            return
+
+        if busy or not self.on_ground or self.brain.state not in ("idle", "walk"):
+            return
+        self._parkour_next -= dt
+        if self._parkour_next <= 0.0:
+            if self._start_parkour():
+                self._parkour_next = self.brain.rng.uniform(95.0, 180.0)
+            else:
+                self._parkour_next = self.brain.rng.uniform(25.0, 45.0)
 
     def open_reminders(self):
         self.close_menu()
@@ -583,7 +635,32 @@ class BearPet:
         r = reminder.Reminder(id=-1, text="测试提醒：该喝水了", due=time.time(), source="local")
         self.deliver_reminder(r)
 
+    def play_sound(self, name: str) -> bool:
+        """播放 assets/sounds/<name>（若为不含后缀的标签则匹配 <name>.wav）；存在并启动播放返回 True。"""
+        if self.quiet_on and self.store.in_quiet_hours(time.time()):
+            return False
+        fname = name if "." in name else f"{name}.wav"
+        path = os.path.join(_BASE_DIR, "assets", "sounds", fname)
+        if not os.path.exists(path):
+            return False
+
+        def go():
+            try:
+                if os.name == "nt":
+                    import winsound
+                    winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                else:
+                    import subprocess
+                    subprocess.run(["afplay", path], check=False, timeout=10)
+            except Exception:
+                pass
+
+        threading.Thread(target=go, daemon=True).start()
+        return True
+
     def _chime(self):
+        if self.play_sound("remind.wav"):
+            return
         def go():
             try:
                 if os.name == "nt":
@@ -636,6 +713,7 @@ class BearPet:
         self._tick_feed(dt)
         self._tick_reminders(dt)
         self._tick_cursor(dt)
+        self._tick_parkour(dt)
 
         lbtn = winlayer.left_button_down()
         if lbtn and not self._prev_lbtn:
@@ -702,19 +780,44 @@ class BearPet:
             self.y = -10000.0
             self.vy = 0.0
         self._recheck_ground()
-        if self.y >= self.y_ground:
+        p = self.perch
+        if p is not None and p.get("jumping_up"):
+            if self.vy >= 0.0:
+                p["jumping_up"] = False
+                if self.y > self.y_ground + 24.0:
+                    self._leave_perch(hop=False)
+        if not (p is not None and p.get("jumping_up")) and self.y >= self.y_ground:
             impact = self.vy
             _log(f"land impact={impact:.0f} y={self.y:.0f} ground={self.y_ground:.0f} hard={impact > HARD_LAND}")
             self.y = self.y_ground
             self.vx = self.vy = 0.0
             self.on_ground = True
             self.brain.notify_landed(hard=impact > HARD_LAND)
+            if p is not None:
+                self.brain.force("walk")
         self._check_walls()
 
     def _recheck_ground(self):
+        if self.perch is not None:
+            self.y_ground = float(self.perch["y_ground"])
+            return
         self.y_ground = float(winlayer.ground_bottom() - 1 - sprite.GROUND)
 
     def _check_walls(self):
+        if self.perch is not None and not self.perch.get("jumping_up"):
+            half_foot = 28.0 * self._draw_scale()
+            xmin = float(self.perch["left"]) - sprite.W / 2.0 + half_foot
+            xmax = float(self.perch["right"]) - sprite.W / 2.0 - half_foot
+            if xmax >= xmin:
+                if self.x < xmin:
+                    self.x = xmin
+                    if self.brain.state == "walk" and self.brain.dir < 0:
+                        self.brain.notify_wall()
+                elif self.x > xmax:
+                    self.x = xmax
+                    if self.brain.state == "walk" and self.brain.dir > 0:
+                        self.brain.notify_wall()
+                return
         left, top, right, bottom = self.win.work_area()
         margin = sprite.W / 2.0 - 56.0
         xmin = left - margin
@@ -797,6 +900,10 @@ class BearPet:
         return "idle"
 
     def advance_animation(self, dt: float):
+        frustrated = bool(getattr(self.brain, "work_frustrated", False))
+        if frustrated and not getattr(self, "_was_work_frustrated", False):
+            self.play_sound("frustrated.wav")
+        self._was_work_frustrated = frustrated
         st = self.sprite_state()
         if st != self.spr_state:
             self.spr_state = st
@@ -906,15 +1013,6 @@ class BearPet:
             p.eye_dy = max(-1.0, min(1.0, dy)) * 0.7
 
     def draw(self):
-        if self.riding or self.climb is not None:
-            img = Image.new("RGBA", (sprite.W, sprite.H), (0, 0, 0, 0))
-            fig, ox, oy = self._ride_offset()
-            img.alpha_composite(fig, (ox - int(fig.width * 0.60), oy - int(fig.height * 0.86)))
-            if self.brain.speech:
-                img = art.draw_bubble(img, self.brain.speech, self.brain.speech_alpha(),
-                                      bottom=58)
-            self.win.blit(img, int(round(self.x)), int(round(self.y)))
-            return
         shadow = self._shadow_factor()
         scale = self._draw_scale()
         if self.sprites is not None:
@@ -967,7 +1065,8 @@ class BearPet:
         self.close_size()
         self._save_config()
         if self.on_ground and not self.dragging:
-            self.y = float(winlayer.ground_bottom() - 1 - sprite.GROUND)
+            self._recheck_ground()
+            self.y = self.y_ground
         self.brain.say(f"{int(round(self.size_scale * 100))}% 的我，也还是我", 2.4)
 
     def _shadow_factor(self) -> float:
